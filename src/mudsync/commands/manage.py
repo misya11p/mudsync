@@ -7,6 +7,7 @@ from prompt_toolkit.layout import Layout
 from prompt_toolkit.layout.containers import Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
+import typer
 
 from mudsync.project import require_project
 from mudsync.sync_rules import SyncRules, load_rules, save_rules
