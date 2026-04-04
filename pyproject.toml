@@ -1,7 +1,18 @@
 [project]
 name = "mudsync"
 version = "0.1.0"
-description = "Add your description here"
+description = "CLI tool for GPU server synchronization"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "typer>=0.12",
+    "inquirerpy>=0.3",
+    "paramiko>=3.0",
+]
+
+[project.scripts]
+mudsync = "mudsync.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
