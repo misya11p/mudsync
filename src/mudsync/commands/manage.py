@@ -1,8 +1,5 @@
-import asyncio
-import os
 import threading
 from pathlib import Path
-from typing import Optional
 
 from prompt_toolkit import Application
 from prompt_toolkit.key_binding import KeyBindings
@@ -14,6 +11,13 @@ import typer
 
 from mudsync.project import require_project
 from mudsync.sync_rules import SyncRules, load_rules, save_rules
+
+COMMON_EXCLUDES = [
+    "__pycache__/",
+    "node_modules/",
+    ".venv/",
+    ".ipynb_checkpoints/",
+]
 
 
 def format_size(size_bytes: int) -> str:
@@ -27,6 +31,13 @@ def format_size(size_bytes: int) -> str:
         return f"{size_bytes / (1024 * 1024 * 1024):.1f}GB"
 
 
+SIZE_WIDTH = 10
+
+
+def format_size_padded(size_bytes: int) -> str:
+    return format_size(size_bytes).rjust(SIZE_WIDTH)
+
+
 def get_file_size(path: Path) -> int:
     try:
         return path.stat().st_size
@@ -36,12 +47,7 @@ def get_file_size(path: Path) -> int:
 
 def count_dir_items(path: Path) -> int:
     try:
-        count = 0
-        for _ in path.iterdir():
-            count += 1
-            if count > 100:
-                return count
-        return count
+        return sum(1 for _ in path.iterdir())
     except (OSError, PermissionError):
         return 0
 
@@ -60,8 +66,13 @@ def calc_dir_size(path: Path) -> int:
     return total
 
 
+def _rel_str(path: Path, project_root: Path) -> str:
+    rel = path.relative_to(project_root)
+    return str(rel) + ("/" if path.is_dir() else "")
+
+
 class FileBrowser:
-    def __init__(self, project_root: Path, rules: SyncRules):
+    def __init__(self, project_root: Path, rules: SyncRules, app_ref: list):
         self.project_root = project_root
         self.rules = rules
         self.current_dir = project_root
@@ -71,6 +82,7 @@ class FileBrowser:
         self.dir_sizes: dict[Path, int] = {}
         self.size_loading: set[Path] = set()
         self.size_lock = threading.Lock()
+        self._app_ref = app_ref
         self.refresh_items()
         self._start_size_calculations()
 
@@ -94,12 +106,6 @@ class FileBrowser:
     def _start_size_calculations(self):
         for item in self.items:
             if item.is_dir():
-                item_count = count_dir_items(item)
-                if item_count > 100 and not self.is_excluded(item):
-                    rel_str = str(item.relative_to(self.project_root)) + "/"
-                    if rel_str not in self.rules.excludes:
-                        self.rules.excludes.append(rel_str)
-
                 if item not in self.dir_sizes and item not in self.size_loading:
                     self._calc_dir_size_async(item)
 
@@ -115,34 +121,65 @@ class FileBrowser:
                 self.dir_sizes[dir_path] = size
                 self.item_sizes[dir_path] = size
                 self.size_loading.discard(dir_path)
+            app = self._app_ref[0]
+            if app:
+                app.invalidate()
 
         t = threading.Thread(target=worker, daemon=True)
         t.start()
 
+    def _is_directly_excluded(self, path: Path) -> bool:
+        rs = _rel_str(path, self.project_root)
+        return rs in self.rules.excludes
+
     def is_excluded(self, path: Path) -> bool:
-        rel = path.relative_to(self.project_root)
-        rel_str = str(rel) + ("/" if path.is_dir() else "")
-        if rel_str in self.rules.excludes:
+        rs = _rel_str(path, self.project_root)
+        if rs in self.rules.excludes:
             return True
         if path.is_dir():
             for exc in self.rules.excludes:
-                if exc.endswith("/") and rel_str.startswith(exc):
+                if exc.endswith("/") and rs.startswith(exc):
                     return True
         return False
 
-    def is_default_excluded(self, path: Path) -> bool:
-        if path.is_file():
-            size = self.item_sizes.get(path, get_file_size(path))
-            return size > 10 * 1024 * 1024
-        return False
+    def all_children_excluded(self, dir_path: Path) -> bool:
+        try:
+            children = [p for p in dir_path.iterdir() if p.name != ".git"]
+            if not children:
+                return False
+            return all(self.is_excluded(c) for c in children)
+        except (OSError, PermissionError):
+            return False
 
     def toggle_exclude(self, path: Path):
-        rel = path.relative_to(self.project_root)
-        rel_str = str(rel) + ("/" if path.is_dir() else "")
-        if rel_str in self.rules.excludes:
-            self.rules.excludes.remove(rel_str)
+        if path.is_dir():
+            if self.all_children_excluded(path):
+                rs = _rel_str(path, self.project_root)
+                if rs in self.rules.excludes:
+                    self.rules.excludes.remove(rs)
+                    for child in path.iterdir():
+                        if child.name == ".git":
+                            continue
+                        crs = _rel_str(child, self.project_root)
+                        if crs in self.rules.excludes:
+                            self.rules.excludes.remove(crs)
+                else:
+                    self.rules.excludes.append(rs)
+            else:
+                for child in path.iterdir():
+                    if child.name == ".git":
+                        continue
+                    crs = _rel_str(child, self.project_root)
+                    if crs in self.rules.excludes:
+                        self.rules.excludes.remove(crs)
+                    else:
+                        self.rules.excludes.append(crs)
         else:
-            self.rules.excludes.append(rel_str)
+            rs = _rel_str(path, self.project_root)
+            if rs in self.rules.excludes:
+                self.rules.excludes.remove(rs)
+            else:
+                self.rules.excludes.append(rs)
 
     def get_display_text(self):
         lines = []
@@ -159,24 +196,21 @@ class FileBrowser:
             is_dir = item.is_dir()
             is_excluded = self.is_excluded(item)
             name = item.name + ("/" if is_dir else "")
-            prefix = "  " if is_dir else "  "
-            status = "[ ]" if is_excluded else "[*]"
 
             size = self.item_sizes.get(item, 0)
             if is_dir and item in self.size_loading:
-                size_str = "(calculating...)"
+                size_str = "(calc...)".rjust(SIZE_WIDTH)
             else:
-                size_str = format_size(size)
+                size_str = format_size_padded(size)
 
-            if i == self.cursor_index:
-                lines.append(
-                    (
-                        "class:cursor",
-                        f"> {status} {prefix}{name:<30s} {size_str}\n",
-                    )
-                )
+            if is_excluded:
+                style_class = "class:excluded"
+            elif i == self.cursor_index:
+                style_class = "class:cursor"
             else:
-                lines.append(("", f"  {status} {prefix}{name:<30s} {size_str}\n"))
+                style_class = ""
+
+            lines.append((style_class, f"  {name:<30s} {size_str}\n"))
 
         return lines
 
@@ -207,6 +241,23 @@ class FileBrowser:
             self.toggle_exclude(self.items[self.cursor_index])
 
 
+def _compact_rules(rules: SyncRules, project_root: Path) -> SyncRules:
+    excludes = set(rules.excludes)
+    to_remove = set()
+    for exc in excludes:
+        if exc.endswith("/"):
+            dir_path = project_root / exc.rstrip("/")
+            if dir_path.is_dir():
+                for child in dir_path.iterdir():
+                    if child.name == ".git":
+                        continue
+                    crs = _rel_str(child, project_root)
+                    if crs in excludes:
+                        to_remove.add(crs)
+    new_excludes = [e for e in rules.excludes if e not in to_remove]
+    return SyncRules(project_path=rules.project_path, excludes=new_excludes)
+
+
 def command():
     project_root = require_project()
     rules = load_rules(project_root)
@@ -214,20 +265,27 @@ def command():
     for item in project_root.iterdir():
         if item.name == ".git":
             continue
-        if item.is_file():
+        if item.name in [e.rstrip("/") for e in COMMON_EXCLUDES]:
+            rs = _rel_str(item, project_root)
+            if rs not in rules.excludes:
+                rules.excludes.append(rs)
+        elif item.is_file():
             size = get_file_size(item)
             if size > 10 * 1024 * 1024:
-                rel_str = str(item.relative_to(project_root))
-                if rel_str not in rules.excludes:
-                    rules.excludes.append(rel_str)
+                rs = _rel_str(item, project_root)
+                if rs not in rules.excludes:
+                    rules.excludes.append(rs)
         elif item.is_dir():
             item_count = count_dir_items(item)
             if item_count > 100:
-                rel_str = str(item.relative_to(project_root)) + "/"
-                if rel_str not in rules.excludes:
-                    rules.excludes.append(rel_str)
+                rs = _rel_str(item, project_root)
+                if rs not in rules.excludes:
+                    rules.excludes.append(rs)
 
-    browser = FileBrowser(project_root, rules)
+    app_ref = [None]
+
+    def get_display():
+        return browser.get_display_text()
 
     kb = KeyBindings()
 
@@ -269,7 +327,8 @@ def command():
 
     @kb.add("enter")
     def _(event):
-        save_rules(rules)
+        compacted = _compact_rules(rules, project_root)
+        save_rules(compacted)
         event.app.exit(result="saved")
 
     @kb.add("c-c")
@@ -281,12 +340,16 @@ def command():
             "header": "bold #4fc3f7",
             "info": "#888888",
             "cursor": "bold #a5d6a7",
+            "excluded": "#555555",
         }
     )
 
-    control = FormattedTextControl(browser.get_display_text)
+    browser = FileBrowser(project_root, rules, app_ref)
+
+    control = FormattedTextControl(get_display)
     layout = Layout(Window(content=control))
     app = Application(layout=layout, key_bindings=kb, style=style, full_screen=True)
+    app_ref[0] = app
 
     result = app.run()
     if result == "saved":

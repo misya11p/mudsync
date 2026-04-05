@@ -19,6 +19,7 @@ def command():
     rsync_cmd = [
         "rsync",
         "-avz",
+        "--delete-excluded",
         "--exclude",
         ".git/",
     ]
