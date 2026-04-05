@@ -17,12 +17,8 @@ def command():
 
     remote_path = f"{app_config.remote_home}/{proj_name}"
 
-    excludes = get_excludes(project_root)
-    exclude_lines = [".git/"]
-    for exclude in excludes:
-        if exclude == ".git" or exclude == ".git/":
-            continue
-        exclude_lines.append(exclude)
+    excludes = get_excludes(project_root, app_config.global_excludes)
+    exclude_lines = list(excludes)
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
         f.write("\n".join(exclude_lines) + "\n")

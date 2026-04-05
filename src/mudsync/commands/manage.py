@@ -10,25 +10,9 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 import typer
 
+from mudsync.config import load_config, DEFAULT_GLOBAL_EXCLUDES
 from mudsync.project import require_project
 from mudsync.sync_rules import SyncRules, load_rules, save_rules
-
-COMMON_EXCLUDES = [
-    "__pycache__/",
-    "node_modules/",
-    ".venv/",
-    ".ipynb_checkpoints/",
-]
-
-HIDDEN_PATTERNS = [
-    "__pycache__",
-    ".venv",
-    "node_modules",
-    ".ipynb_checkpoints",
-    ".DS_Store",
-    "*.pyc",
-    "*.pyo",
-]
 
 
 def format_size(size_bytes: int) -> tuple[str, str]:
@@ -89,7 +73,7 @@ class FileBrowser:
         project_root: Path,
         rules: SyncRules,
         app_ref: list,
-        show_all: bool = False,
+        global_excludes: list[str] | None = None,
     ):
         self.project_root = project_root
         self.rules = rules
@@ -102,19 +86,19 @@ class FileBrowser:
         self.size_loading: set[Path] = set()
         self.size_lock = threading.Lock()
         self._app_ref = app_ref
-        self.show_all = show_all
+        self.global_excludes = global_excludes or []
         self.refresh_items()
         self._start_size_calculations()
 
-    def _is_hidden(self, path: Path) -> bool:
-        if self.show_all:
-            return False
+    def _is_global_excluded(self, path: Path) -> bool:
         name = path.name
-        if name in HIDDEN_PATTERNS:
-            return True
-        for pattern in HIDDEN_PATTERNS:
-            if fnmatch.fnmatch(name, pattern):
+        for pattern in self.global_excludes:
+            base = pattern.rstrip("/")
+            if name == base:
                 return True
+            if "*" in pattern or "?" in pattern:
+                if fnmatch.fnmatch(name, pattern):
+                    return True
         return False
 
     def refresh_items(self):
@@ -123,7 +107,7 @@ class FileBrowser:
                 [
                     p
                     for p in self.current_dir.iterdir()
-                    if p.name != ".git" and not self._is_hidden(p)
+                    if not self._is_global_excluded(p)
                 ],
                 key=lambda p: (not p.is_dir(), p.name.lower()),
             )
@@ -172,6 +156,8 @@ class FileBrowser:
         t.start()
 
     def is_excluded(self, path: Path) -> bool:
+        if self._is_global_excluded(path):
+            return True
         rs = _rel_str(path, self.project_root)
         if rs in self.rules.excludes:
             return True
@@ -181,6 +167,8 @@ class FileBrowser:
         return False
 
     def _find_parent_exclusion(self, path: Path) -> str | None:
+        if self._is_global_excluded(path):
+            return "__global__"
         rs = _rel_str(path, self.project_root)
         for exc in self.rules.excludes:
             if exc.endswith("/") and rs.startswith(exc):
@@ -191,7 +179,7 @@ class FileBrowser:
         if self.is_excluded(path):
             return "exclude"
         try:
-            children = [p for p in path.iterdir() if p.name != ".git"]
+            children = [p for p in path.iterdir() if not self._is_global_excluded(p)]
         except (OSError, PermissionError):
             return "include"
         if not children:
@@ -205,6 +193,8 @@ class FileBrowser:
         return "include"
 
     def toggle_exclude(self, path: Path):
+        if self._is_global_excluded(path):
+            return
         if path.is_dir():
             rs = _rel_str(path, self.project_root)
             state = self.get_dir_state(path)
@@ -213,23 +203,23 @@ class FileBrowser:
                 if rs in self.rules.excludes:
                     self.rules.excludes.remove(rs)
                     for child in path.rglob("*"):
-                        if child.name == ".git":
+                        if self._is_global_excluded(child):
                             continue
                         crs = _rel_str(child, self.project_root)
                         if crs in self.rules.excludes:
                             self.rules.excludes.remove(crs)
-                elif parent_exc:
+                elif parent_exc and parent_exc != "__global__":
                     self.rules.excludes.remove(parent_exc)
                     parent_dir = self.project_root / parent_exc.rstrip("/")
                     for sibling in parent_dir.iterdir():
-                        if sibling.name == ".git" or sibling == path:
+                        if self._is_global_excluded(sibling) or sibling == path:
                             continue
                         crs = _rel_str(sibling, self.project_root)
                         if crs not in self.rules.excludes:
                             self.rules.excludes.append(crs)
             elif state == "half_include":
                 for child in path.rglob("*"):
-                    if child.name == ".git":
+                    if self._is_global_excluded(child):
                         continue
                     crs = _rel_str(child, self.project_root)
                     if crs in self.rules.excludes:
@@ -241,10 +231,12 @@ class FileBrowser:
             if rs in self.rules.excludes:
                 self.rules.excludes.remove(rs)
             elif parent_exc := self._find_parent_exclusion(path):
+                if parent_exc == "__global__":
+                    return
                 self.rules.excludes.remove(parent_exc)
                 parent_dir = self.project_root / parent_exc.rstrip("/")
                 for sibling in parent_dir.iterdir():
-                    if sibling.name == ".git" or sibling == path:
+                    if self._is_global_excluded(sibling) or sibling == path:
                         continue
                     crs = _rel_str(sibling, self.project_root)
                     if crs not in self.rules.excludes:
@@ -329,7 +321,10 @@ class FileBrowser:
             self.toggle_exclude(self.items[self.cursor_index])
 
 
-def _compact_rules(rules: SyncRules, project_root: Path) -> SyncRules:
+def _compact_rules(
+    rules: SyncRules, project_root: Path, global_excludes: list[str] | None = None
+) -> SyncRules:
+    global_excludes = global_excludes or []
     excludes = set(rules.excludes)
     to_remove = set()
     for exc in excludes:
@@ -337,7 +332,11 @@ def _compact_rules(rules: SyncRules, project_root: Path) -> SyncRules:
             dir_path = project_root / exc.rstrip("/")
             if dir_path.is_dir():
                 for child in dir_path.iterdir():
-                    if child.name == ".git":
+                    if any(
+                        child.name == p.rstrip("/")
+                        or ("*" in p and fnmatch.fnmatch(child.name, p))
+                        for p in global_excludes
+                    ):
                         continue
                     crs = _rel_str(child, project_root)
                     if crs in excludes:
@@ -346,18 +345,16 @@ def _compact_rules(rules: SyncRules, project_root: Path) -> SyncRules:
     return SyncRules(project_path=rules.project_path, excludes=new_excludes)
 
 
-def command(show_all: bool = False):
+def command():
     project_root = require_project()
     rules = load_rules(project_root)
+    app_config = load_config()
+    global_excludes = (
+        app_config.global_excludes if app_config else DEFAULT_GLOBAL_EXCLUDES
+    )
 
     for item in project_root.iterdir():
-        if item.name == ".git":
-            continue
-        if item.name in [e.rstrip("/") for e in COMMON_EXCLUDES]:
-            rs = _rel_str(item, project_root)
-            if rs not in rules.excludes:
-                rules.excludes.append(rs)
-        elif item.is_file():
+        if item.is_file():
             size = get_file_size(item)
             if size > 10 * 1024 * 1024:
                 rs = _rel_str(item, project_root)
@@ -416,7 +413,7 @@ def command(show_all: bool = False):
 
     @kb.add("enter")
     def _(event):
-        compacted = _compact_rules(rules, project_root)
+        compacted = _compact_rules(rules, project_root, global_excludes)
         save_rules(compacted)
         event.app.exit(result="saved")
 
@@ -433,7 +430,7 @@ def command(show_all: bool = False):
         }
     )
 
-    browser = FileBrowser(project_root, rules, app_ref, show_all=show_all)
+    browser = FileBrowser(project_root, rules, app_ref, global_excludes=global_excludes)
 
     control = FormattedTextControl(get_display)
     layout = Layout(Window(content=control))

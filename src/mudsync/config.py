@@ -1,14 +1,28 @@
 import os
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 import json
 from pathlib import Path
 from typing import Optional
+
+DEFAULT_GLOBAL_EXCLUDES = [
+    ".git/",
+    "__pycache__/",
+    ".venv/",
+    "node_modules/",
+    ".ipynb_checkpoints/",
+    ".DS_Store",
+    "*.pyc",
+    "*.pyo",
+]
 
 
 @dataclass
 class AppConfig:
     ssh_host: str
     remote_home: str
+    global_excludes: list[str] = field(
+        default_factory=lambda: list(DEFAULT_GLOBAL_EXCLUDES)
+    )
 
 
 def get_config_dir() -> Path:

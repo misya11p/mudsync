@@ -34,13 +34,9 @@ def connect():
 
 
 @app.command()
-def manage(
-    all: bool = typer.Option(
-        False, "--all", "-a", help="Show all files including hidden"
-    ),
-):
+def manage():
     """Manage files to sync (interactive)"""
-    manage_cmd.command(show_all=all)
+    manage_cmd.command()
 
 
 @app.command()

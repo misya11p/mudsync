@@ -45,6 +45,13 @@ def save_rules(rules: SyncRules) -> None:
     )
 
 
-def get_excludes(project_root: Path) -> list[str]:
+def get_excludes(
+    project_root: Path, global_excludes: list[str] | None = None
+) -> list[str]:
     rules = load_rules(project_root)
-    return rules.excludes
+    excludes = list(rules.excludes)
+    if global_excludes:
+        for pattern in global_excludes:
+            if pattern not in excludes:
+                excludes.append(pattern)
+    return excludes
