@@ -19,10 +19,14 @@ def command():
     rsync_cmd = [
         "rsync",
         "-avz",
+        "--exclude",
+        ".git/",
     ]
 
     excludes = get_excludes(project_root)
     for exclude in excludes:
+        if exclude == ".git" or exclude == ".git/":
+            continue
         rsync_cmd.extend(["--exclude", exclude])
 
     ssh_opts = "-o StrictHostKeyChecking=no"
@@ -39,7 +43,7 @@ def command():
     typer.echo(
         f"Syncing {project_root} -> {ssh_info.user}@{ssh_info.hostname}:{remote_path}/"
     )
-    typer.echo(f"Excludes: {len(excludes)} rules")
+    typer.echo(f"Excludes: {len(excludes) + 1} rules (including .git/)")
     typer.echo()
 
     try:

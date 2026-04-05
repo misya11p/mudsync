@@ -8,7 +8,12 @@ from mudsync.commands import build as build_cmd
 from mudsync.commands import run as run_cmd
 from mudsync.commands import jupyter as jupyter_cmd
 
-app = typer.Typer(help="MUDSync - GPU server synchronization CLI")
+
+CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
+app = typer.Typer(
+    help="MUDSync - GPU server synchronization CLI",
+    context_settings=CONTEXT_SETTINGS
+)
 
 
 @app.command()

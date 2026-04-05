@@ -1,8 +1,4 @@
-import os
 import subprocess
-import sys
-
-import typer
 
 from mudsync.config import require_config
 from mudsync.project import get_project_name, require_project
@@ -29,10 +25,12 @@ def command():
 
     ssh_cmd.append(f"{ssh_info.user}@{ssh_info.hostname}")
 
-    remote_cmd = f"cd {remote_path} && exec $SHELL"
+    remote_cmd = f"mkdir -p {remote_path} && cd {remote_path} && exec $SHELL"
     ssh_cmd.append(remote_cmd)
 
     try:
-        os.execvp(ssh_cmd[0], ssh_cmd)
-    except OSError as e:
-        raise SystemExit(f"Error: Failed to execute SSH: {e}")
+        subprocess.run(ssh_cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        raise SystemExit(f"Error: SSH connection failed with exit code {e.returncode}")
+    except FileNotFoundError:
+        raise SystemExit("Error: ssh command not found")
