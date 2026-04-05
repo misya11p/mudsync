@@ -20,22 +20,24 @@ COMMON_EXCLUDES = [
 ]
 
 
-def format_size(size_bytes: int) -> str:
+def format_size(size_bytes: int) -> tuple[str, str]:
     if size_bytes < 1024:
-        return f"{size_bytes}B"
+        return (f"{size_bytes}", "B")
     elif size_bytes < 1024 * 1024:
-        return f"{size_bytes / 1024:.1f}KB"
+        return (f"{size_bytes / 1024:.1f}", "KB")
     elif size_bytes < 1024 * 1024 * 1024:
-        return f"{size_bytes / (1024 * 1024):.1f}MB"
+        return (f"{size_bytes / (1024 * 1024):.1f}", "MB")
     else:
-        return f"{size_bytes / (1024 * 1024 * 1024):.1f}GB"
+        return (f"{size_bytes / (1024 * 1024 * 1024):.1f}", "GB")
 
 
-SIZE_WIDTH = 10
+NUM_WIDTH = 7
+UNIT_WIDTH = 3
 
 
 def format_size_padded(size_bytes: int) -> str:
-    return format_size(size_bytes).rjust(SIZE_WIDTH)
+    num, unit = format_size(size_bytes)
+    return f"{num:>{NUM_WIDTH}} {unit:<{UNIT_WIDTH}}"
 
 
 def get_file_size(path: Path) -> int:
@@ -77,6 +79,7 @@ class FileBrowser:
         self.rules = rules
         self.current_dir = project_root
         self.cursor_index = 0
+        self.cursor_positions: dict[Path, int] = {}
         self.items: list[Path] = []
         self.item_sizes: dict[Path, int] = {}
         self.dir_sizes: dict[Path, int] = {}
@@ -94,7 +97,12 @@ class FileBrowser:
             )
         except PermissionError:
             self.items = []
-        self.cursor_index = min(self.cursor_index, max(0, len(self.items) - 1))
+        if self.current_dir in self.cursor_positions:
+            self.cursor_index = min(
+                self.cursor_positions[self.current_dir], max(0, len(self.items) - 1)
+            )
+        else:
+            self.cursor_index = min(0, max(0, len(self.items) - 1))
 
         for item in self.items:
             if item not in self.item_sizes:
@@ -102,6 +110,9 @@ class FileBrowser:
                     self.item_sizes[item] = get_file_size(item)
                 else:
                     self.item_sizes[item] = 0
+
+    def _save_cursor_position(self):
+        self.cursor_positions[self.current_dir] = self.cursor_index
 
     def _start_size_calculations(self):
         for item in self.items:
@@ -127,10 +138,6 @@ class FileBrowser:
 
         t = threading.Thread(target=worker, daemon=True)
         t.start()
-
-    def _is_directly_excluded(self, path: Path) -> bool:
-        rs = _rel_str(path, self.project_root)
-        return rs in self.rules.excludes
 
     def is_excluded(self, path: Path) -> bool:
         rs = _rel_str(path, self.project_root)
@@ -199,18 +206,17 @@ class FileBrowser:
 
             size = self.item_sizes.get(item, 0)
             if is_dir and item in self.size_loading:
-                size_str = "(calc...)".rjust(SIZE_WIDTH)
+                size_str = f"{'(calc...)':>{NUM_WIDTH}} {'':<{UNIT_WIDTH}}"
             else:
                 size_str = format_size_padded(size)
 
-            if is_excluded:
-                style_class = "class:excluded"
-            elif i == self.cursor_index:
-                style_class = "class:cursor"
-            else:
-                style_class = ""
+            cursor_marker = "> " if i == self.cursor_index else "  "
 
-            lines.append((style_class, f"  {name:<30s} {size_str}\n"))
+            if is_excluded:
+                lines.append(("", cursor_marker))
+                lines.append(("class:excluded", f"{name:<30s} {size_str}\n"))
+            else:
+                lines.append(("", f"{cursor_marker}{name:<30s} {size_str}\n"))
 
         return lines
 
@@ -223,6 +229,7 @@ class FileBrowser:
             self.cursor_index += 1
 
     def enter_dir(self):
+        self._save_cursor_position()
         if self.items and self.items[self.cursor_index].is_dir():
             self.current_dir = self.items[self.cursor_index]
             self.cursor_index = 0
@@ -230,9 +237,9 @@ class FileBrowser:
             self._start_size_calculations()
 
     def parent_dir(self):
+        self._save_cursor_position()
         if self.current_dir != self.project_root:
             self.current_dir = self.current_dir.parent
-            self.cursor_index = 0
             self.refresh_items()
             self._start_size_calculations()
 
@@ -339,8 +346,7 @@ def command():
         {
             "header": "bold #4fc3f7",
             "info": "#888888",
-            "cursor": "bold #a5d6a7",
-            "excluded": "#555555",
+            "excluded": "ansibrightblack",
         }
     )
 
