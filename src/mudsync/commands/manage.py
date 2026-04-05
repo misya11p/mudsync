@@ -22,7 +22,7 @@ COMMON_EXCLUDES = [
 
 def format_size(size_bytes: int) -> tuple[str, str]:
     if size_bytes < 1024:
-        return (f"{size_bytes}", "B")
+        return (f"{size_bytes:.1f}", "B")
     elif size_bytes < 1024 * 1024:
         return (f"{size_bytes / 1024:.1f}", "KB")
     elif size_bytes < 1024 * 1024 * 1024:
@@ -31,13 +31,12 @@ def format_size(size_bytes: int) -> tuple[str, str]:
         return (f"{size_bytes / (1024 * 1024 * 1024):.1f}", "GB")
 
 
-NUM_WIDTH = 7
-UNIT_WIDTH = 3
+SIZE_WIDTH = 8
 
 
 def format_size_padded(size_bytes: int) -> str:
     num, unit = format_size(size_bytes)
-    return f"{num:>{NUM_WIDTH}} {unit:<{UNIT_WIDTH}}"
+    return f"{num:>5} {unit:>2}"
 
 
 def get_file_size(path: Path) -> int:
@@ -206,7 +205,7 @@ class FileBrowser:
 
             size = self.item_sizes.get(item, 0)
             if is_dir and item in self.size_loading:
-                size_str = f"{'(calc...)':>{NUM_WIDTH}} {'':<{UNIT_WIDTH}}"
+                size_str = "calc...".rjust(SIZE_WIDTH)
             else:
                 size_str = format_size_padded(size)
 
@@ -331,6 +330,7 @@ def command():
     @kb.add(" ")
     def _(event):
         browser.toggle()
+        event.app.invalidate()
 
     @kb.add("enter")
     def _(event):
