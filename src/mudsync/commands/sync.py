@@ -1,4 +1,5 @@
 import subprocess
+import tempfile
 
 import typer
 
@@ -16,19 +17,24 @@ def command():
 
     remote_path = f"{app_config.remote_home}/{proj_name}"
 
-    rsync_cmd = [
-        "rsync",
-        "-avz",
-        "--delete-excluded",
-        "--exclude",
-        ".git/",
-    ]
-
     excludes = get_excludes(project_root)
+    exclude_lines = [".git/"]
     for exclude in excludes:
         if exclude == ".git" or exclude == ".git/":
             continue
-        rsync_cmd.extend(["--exclude", exclude])
+        exclude_lines.append(exclude)
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write("\n".join(exclude_lines) + "\n")
+        exclude_file = f.name
+
+    rsync_cmd = [
+        "rsync",
+        "-avz",
+        "--delete",
+        "--exclude-from",
+        exclude_file,
+    ]
 
     ssh_opts = "-o StrictHostKeyChecking=no"
     if ssh_info.port != 22:
@@ -44,7 +50,7 @@ def command():
     typer.echo(
         f"Syncing {project_root} -> {ssh_info.user}@{ssh_info.hostname}:{remote_path}/"
     )
-    typer.echo(f"Excludes: {len(excludes) + 1} rules (including .git/)")
+    typer.echo(f"Excludes: {len(exclude_lines)} rules")
     typer.echo()
 
     try:
@@ -59,3 +65,7 @@ def command():
             "  macOS: brew install rsync\n"
             "  Ubuntu: sudo apt install rsync"
         )
+    finally:
+        import os
+
+        os.unlink(exclude_file)
