@@ -1,3 +1,4 @@
+import fnmatch
 import threading
 from pathlib import Path
 
@@ -17,6 +18,16 @@ COMMON_EXCLUDES = [
     "node_modules/",
     ".venv/",
     ".ipynb_checkpoints/",
+]
+
+HIDDEN_PATTERNS = [
+    "__pycache__",
+    ".venv",
+    "node_modules",
+    ".ipynb_checkpoints",
+    ".DS_Store",
+    "*.pyc",
+    "*.pyo",
 ]
 
 
@@ -73,7 +84,13 @@ def _rel_str(path: Path, project_root: Path) -> str:
 
 
 class FileBrowser:
-    def __init__(self, project_root: Path, rules: SyncRules, app_ref: list):
+    def __init__(
+        self,
+        project_root: Path,
+        rules: SyncRules,
+        app_ref: list,
+        show_all: bool = False,
+    ):
         self.project_root = project_root
         self.rules = rules
         self.current_dir = project_root
@@ -85,13 +102,29 @@ class FileBrowser:
         self.size_loading: set[Path] = set()
         self.size_lock = threading.Lock()
         self._app_ref = app_ref
+        self.show_all = show_all
         self.refresh_items()
         self._start_size_calculations()
+
+    def _is_hidden(self, path: Path) -> bool:
+        if self.show_all:
+            return False
+        name = path.name
+        if name in HIDDEN_PATTERNS:
+            return True
+        for pattern in HIDDEN_PATTERNS:
+            if fnmatch.fnmatch(name, pattern):
+                return True
+        return False
 
     def refresh_items(self):
         try:
             self.items = sorted(
-                [p for p in self.current_dir.iterdir() if p.name != ".git"],
+                [
+                    p
+                    for p in self.current_dir.iterdir()
+                    if p.name != ".git" and not self._is_hidden(p)
+                ],
                 key=lambda p: (not p.is_dir(), p.name.lower()),
             )
         except PermissionError:
@@ -142,48 +175,80 @@ class FileBrowser:
         rs = _rel_str(path, self.project_root)
         if rs in self.rules.excludes:
             return True
-        if path.is_dir():
-            for exc in self.rules.excludes:
-                if exc.endswith("/") and rs.startswith(exc):
-                    return True
+        for exc in self.rules.excludes:
+            if exc.endswith("/") and rs.startswith(exc):
+                return True
         return False
 
-    def all_children_excluded(self, dir_path: Path) -> bool:
+    def _find_parent_exclusion(self, path: Path) -> str | None:
+        rs = _rel_str(path, self.project_root)
+        for exc in self.rules.excludes:
+            if exc.endswith("/") and rs.startswith(exc):
+                return exc
+        return None
+
+    def get_dir_state(self, path: Path) -> str:
+        if self.is_excluded(path):
+            return "exclude"
         try:
-            children = [p for p in dir_path.iterdir() if p.name != ".git"]
-            if not children:
-                return False
-            return all(self.is_excluded(c) for c in children)
+            children = [p for p in path.iterdir() if p.name != ".git"]
         except (OSError, PermissionError):
-            return False
+            return "include"
+        if not children:
+            return "include"
+        all_excluded = all(self.is_excluded(c) for c in children)
+        if all_excluded:
+            return "exclude"
+        any_excluded = any(self.is_excluded(c) for c in children)
+        if any_excluded:
+            return "half_include"
+        return "include"
 
     def toggle_exclude(self, path: Path):
         if path.is_dir():
-            if self.all_children_excluded(path):
-                rs = _rel_str(path, self.project_root)
+            rs = _rel_str(path, self.project_root)
+            state = self.get_dir_state(path)
+            parent_exc = self._find_parent_exclusion(path)
+            if state == "exclude":
                 if rs in self.rules.excludes:
                     self.rules.excludes.remove(rs)
-                    for child in path.iterdir():
+                    for child in path.rglob("*"):
                         if child.name == ".git":
                             continue
                         crs = _rel_str(child, self.project_root)
                         if crs in self.rules.excludes:
                             self.rules.excludes.remove(crs)
-                else:
-                    self.rules.excludes.append(rs)
-            else:
-                for child in path.iterdir():
+                elif parent_exc:
+                    self.rules.excludes.remove(parent_exc)
+                    parent_dir = self.project_root / parent_exc.rstrip("/")
+                    for sibling in parent_dir.iterdir():
+                        if sibling.name == ".git" or sibling == path:
+                            continue
+                        crs = _rel_str(sibling, self.project_root)
+                        if crs not in self.rules.excludes:
+                            self.rules.excludes.append(crs)
+            elif state == "half_include":
+                for child in path.rglob("*"):
                     if child.name == ".git":
                         continue
                     crs = _rel_str(child, self.project_root)
                     if crs in self.rules.excludes:
                         self.rules.excludes.remove(crs)
-                    else:
-                        self.rules.excludes.append(crs)
+            else:
+                self.rules.excludes.append(rs)
         else:
             rs = _rel_str(path, self.project_root)
             if rs in self.rules.excludes:
                 self.rules.excludes.remove(rs)
+            elif parent_exc := self._find_parent_exclusion(path):
+                self.rules.excludes.remove(parent_exc)
+                parent_dir = self.project_root / parent_exc.rstrip("/")
+                for sibling in parent_dir.iterdir():
+                    if sibling.name == ".git" or sibling == path:
+                        continue
+                    crs = _rel_str(sibling, self.project_root)
+                    if crs not in self.rules.excludes:
+                        self.rules.excludes.append(crs)
             else:
                 self.rules.excludes.append(rs)
 
@@ -200,8 +265,27 @@ class FileBrowser:
 
         for i, item in enumerate(self.items):
             is_dir = item.is_dir()
-            is_excluded = self.is_excluded(item)
             name = item.name + ("/" if is_dir else "")
+
+            if is_dir:
+                state = self.get_dir_state(item)
+                if state == "exclude":
+                    display_name = name
+                    style_class = "class:excluded"
+                elif state == "include":
+                    display_name = name + "*"
+                    style_class = "class:included"
+                else:
+                    display_name = name
+                    style_class = "class:included"
+            else:
+                is_excluded = self.is_excluded(item)
+                if is_excluded:
+                    display_name = name
+                    style_class = "class:excluded"
+                else:
+                    display_name = name
+                    style_class = "class:included"
 
             size = self.item_sizes.get(item, 0)
             if is_dir and item in self.size_loading:
@@ -211,11 +295,9 @@ class FileBrowser:
 
             cursor_marker = "> " if i == self.cursor_index else "  "
 
-            if is_excluded:
-                lines.append(("", cursor_marker))
-                lines.append(("class:excluded", f"{name:<30s} {size_str}\n"))
-            else:
-                lines.append(("", f"{cursor_marker}{name:<30s} {size_str}\n"))
+            lines.append(
+                (style_class, f"{cursor_marker}{display_name:<30s} {size_str}\n")
+            )
 
         return lines
 
@@ -264,7 +346,7 @@ def _compact_rules(rules: SyncRules, project_root: Path) -> SyncRules:
     return SyncRules(project_path=rules.project_path, excludes=new_excludes)
 
 
-def command():
+def command(show_all: bool = False):
     project_root = require_project()
     rules = load_rules(project_root)
 
@@ -327,7 +409,7 @@ def command():
     def _(event):
         browser.parent_dir()
 
-    @kb.add(" ")
+    @kb.add("space")
     def _(event):
         browser.toggle()
         event.app.invalidate()
@@ -346,11 +428,12 @@ def command():
         {
             "header": "bold #4fc3f7",
             "info": "#888888",
-            "excluded": "ansibrightblack",
+            "excluded": "#888888",
+            "included": "#4caf50",
         }
     )
 
-    browser = FileBrowser(project_root, rules, app_ref)
+    browser = FileBrowser(project_root, rules, app_ref, show_all=show_all)
 
     control = FormattedTextControl(get_display)
     layout = Layout(Window(content=control))

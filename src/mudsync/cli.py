@@ -11,8 +11,7 @@ from mudsync.commands import jupyter as jupyter_cmd
 
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
 app = typer.Typer(
-    help="MUDSync - GPU server synchronization CLI",
-    context_settings=CONTEXT_SETTINGS
+    help="MUDSync - GPU server synchronization CLI", context_settings=CONTEXT_SETTINGS
 )
 
 
@@ -35,9 +34,13 @@ def connect():
 
 
 @app.command()
-def manage():
+def manage(
+    all: bool = typer.Option(
+        False, "--all", "-a", help="Show all files including hidden"
+    ),
+):
     """Manage files to sync (interactive)"""
-    manage_cmd.command()
+    manage_cmd.command(show_all=all)
 
 
 @app.command()
