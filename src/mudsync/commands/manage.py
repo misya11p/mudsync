@@ -187,8 +187,12 @@ class FileBrowser:
         all_excluded = all(self.is_excluded(c) for c in children)
         if all_excluded:
             return "exclude"
-        any_excluded = any(self.is_excluded(c) for c in children)
-        if any_excluded:
+        any_half_or_excluded = any(
+            self.is_excluded(c)
+            or (c.is_dir() and self.get_dir_state(c) == "half_include")
+            for c in children
+        )
+        if any_half_or_excluded:
             return "half_include"
         return "include"
 
