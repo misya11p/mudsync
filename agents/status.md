@@ -19,6 +19,12 @@
 - 完了済み:
   - `agents/readme.md` を読み、要求を整理
   - Docker Compose 公式仕様（`compose run --rm`, `--build`）を確認
+  - 追加合意を反映して計画を更新
+    - `run`: `COMMAND` 必須 + `--build` 明示時のみ再ビルド
+    - service 未指定時は先頭 service 自動採用
+    - compose ファイル既定は `compose.yaml` 優先探索
+    - `jupyter`: `start/stop` サブコマンド化（start=`up -d`, stop=`down`）
+    - `jupyter start` は URL 出力のみ（port forward は保留）
   - 計画文書を作成
     - `agents/plans/plan.md`
     - `agents/plans/spec.md`
@@ -28,7 +34,6 @@
     - `agents/plans/tasks/04_tests_and_regression.md`
 - 現在作業中: なし（計画作成フェーズ完了）
 - 現在の課題:
-  - `run` の service 未指定時ルールは「先頭自動採用」でユーザー確定済み
-  - `jupyter` token 取得方式（compose 化後）の安定化方針を実装時に検証する必要あり
+  - `jupyter start` の URL 抽出失敗時フォールバック表示方針を実装時に確定する必要あり
 - 次のステップ:
   1. Task 01 から順に実装開始
