@@ -37,6 +37,40 @@ class CLITestCase(unittest.TestCase):
             compose_file=None,
         )
 
+    @patch("mudsync.cli.run_cmd.command")
+    def test_run_parses_build_before_command(self, run_command_mock) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["run", "--build", "nvidia-smi"],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        run_command_mock.assert_called_once_with(
+            cmd=["nvidia-smi"],
+            service=None,
+            build=True,
+            sync=False,
+            compose_file=None,
+        )
+
+    @patch("mudsync.cli.run_cmd.command")
+    def test_run_parses_build_after_command(self, run_command_mock) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["run", "nvidia-smi", "--build"],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        run_command_mock.assert_called_once_with(
+            cmd=["nvidia-smi"],
+            service=None,
+            build=True,
+            sync=False,
+            compose_file=None,
+        )
+
 
 class RunCommandTestCase(unittest.TestCase):
     def test_build_remote_run_command(self) -> None:

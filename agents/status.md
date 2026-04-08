@@ -32,6 +32,7 @@
   - 不要な `from __future__ import annotations` を関連ファイルから削除
   - `run` が複数トークンのコマンド引数（例: `python eval.py --arg1 val1`）を受け取れるよう修正
   - `--sync` 指定時は service 解決より先に同期を実行するよう順序を修正（`run` / `jupyter`）
+  - `run --build` が前置/後置どちらでも正しくCLIオプション解釈されることをテストで明示化
 - 現在作業中:
   - なし
 - 現在の課題:
