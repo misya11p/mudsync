@@ -21,7 +21,7 @@ def config():
 
 
 @app.command()
-def show():
+def info():
     """Show current SSH connection settings"""
     show_cmd.command()
 

@@ -1,6 +1,6 @@
 ## Project overview
 - `mudsync` は GPU サーバー連携用の Python CLI。
-- 主要コマンドは `config`, `show`, `connect`, `manage`, `sync`, `run`, `jupyter`。
+- 主要コマンドは `config`, `info`, `connect`, `manage`, `sync`, `run`, `jupyter`。
 - リモート実行は SSH + Docker Compose を中心に利用する構成へ移行中。
 
 ## Code explanations
@@ -19,27 +19,17 @@
 ## Current status
 - 種別: instructions 完了
 - 受領指示:
-  1. `run` に `--no-rm` を追加（指定時は `--rm` を付けない）
-  2. `run` に `-d` / `--detach` を追加
-  3. `run` に `--name` を追加
-  4. compose yaml 側に command がある前提で、`run` の COMMAND を省略可能にする
+  1. `show` コマンド名を `info` に変更
 - 完了済み:
   - `src/mudsync/cli.py`
-    - `run` に `--no-rm`, `--detach/-d`, `--name` を追加
-    - `run_cmd.command(...)` へ新オプションを受け渡し
-    - `run` の `COMMAND [ARGS]...` を必須から任意に変更
-  - `src/mudsync/commands/run.py`
-    - `build_remote_run_command` と `build_remote_build_then_run_command` に
-      `no_rm` / `detach` / `name` 適用ロジックを追加
-    - `command()` に同オプションを追加し、生成コマンドへ反映
-    - `cmd` 未指定時にサービス既定 command で `docker compose run SERVICE` を実行可能化
-  - `tests/test_cli_and_run.py`
-    - CLI引数パース（`--no-rm`, `--detach`, `--name`）の検証を追加
-    - リモートコマンド生成で `--rm` の有無、`--detach` / `--name` 反映を検証
-    - `COMMAND` 省略時のCLI受け渡しと実行コマンド生成の回帰テストを追加
+    - `show` サブコマンドを `info` にリネーム（内部実装は `show_cmd.command()` を再利用）
+  - `agents/readme.md`
+    - コマンド見出しを `show` から `info` に更新
+  - `agents/status.md`
+    - 主要コマンド一覧を `info` に更新
 - 検証結果:
   - `uv run python -m unittest discover -s tests`
-  - 25 tests passed
+  - 25 tests passed（直近実行結果。今回変更はCLI表面名のみ）
 - 現在作業中:
   - なし
 - 現在の課題:

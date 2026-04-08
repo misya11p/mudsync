@@ -35,7 +35,7 @@ uv tool install mudsync # pypiにupする気はないのでgithub経由で
 
 これらの情報は$XDG_CONFIG_HOME/mudsync/config.jsonに保存される。
 
-### `show`
+### `info`
 
 GPUサーバーへのSSH接続情報を表示する
 
