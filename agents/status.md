@@ -29,6 +29,7 @@
   - `jupyter.py` で Ctrl+C 時に `docker compose down` を実行する cleanup を追加
   - `tests/` を新設し、`run` / `jupyter` 回帰テストを追加
   - `--file` 未指定時は `docker compose` の既定探索に委譲するよう修正（`--file` を渡さない）
+  - 不要な `from __future__ import annotations` を関連ファイルから削除
 - 現在作業中:
   - テスト実行による回帰確認
 - 現在の課題:
