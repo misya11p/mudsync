@@ -20,18 +20,37 @@ def build_remote_run_command(
     compose_file: str | None,
     service: str,
     command_parts: list[str],
-    build: bool,
 ) -> str:
     compose_args = build_compose_base_args(compose_file)
     run_args = [*compose_args, "run", "--rm"]
-    if build:
-        run_args.append("--build")
-
     run_args.append(service)
     run_args.extend(command_parts)
 
     quoted = [shlex.quote(part) for part in run_args]
     command_parts = ["cd", shlex.quote(remote_path), "&&", *quoted]
+    return " ".join(command_parts)
+
+
+def build_remote_build_then_run_command(
+    remote_path: str,
+    compose_file: str | None,
+    service: str,
+    command_parts: list[str],
+) -> str:
+    compose_args = build_compose_base_args(compose_file)
+    build_args = [*compose_args, "build", service]
+    run_args = [*compose_args, "run", "--rm", service, *command_parts]
+
+    quoted_build = [shlex.quote(part) for part in build_args]
+    quoted_run = [shlex.quote(part) for part in run_args]
+    command_parts = [
+        "cd",
+        shlex.quote(remote_path),
+        "&&",
+        *quoted_build,
+        "&&",
+        *quoted_run,
+    ]
     return " ".join(command_parts)
 
 
@@ -63,13 +82,20 @@ def command(
         service,
     )
 
-    remote_cmd = build_remote_run_command(
-        remote_path,
-        resolved_file,
-        resolved_service,
-        cmd,
-        build,
-    )
+    if build:
+        remote_cmd = build_remote_build_then_run_command(
+            remote_path,
+            resolved_file,
+            resolved_service,
+            cmd,
+        )
+    else:
+        remote_cmd = build_remote_run_command(
+            remote_path,
+            resolved_file,
+            resolved_service,
+            cmd,
+        )
     ssh_cmd = build_ssh_command(ssh_info, remote_cmd)
 
     display_command = " ".join(shlex.quote(part) for part in cmd)

@@ -9,7 +9,11 @@ from typer.testing import CliRunner
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from mudsync.cli import app
-from mudsync.commands.run import build_remote_run_command, command
+from mudsync.commands.run import (
+    build_remote_build_then_run_command,
+    build_remote_run_command,
+    command,
+)
 from mudsync.ssh_config import SSHHost
 
 
@@ -79,11 +83,23 @@ class RunCommandTestCase(unittest.TestCase):
             compose_file="compose.yaml",
             service="worker",
             command_parts=["python", "main.py", "--epochs", "10"],
-            build=True,
         )
         self.assertIn("cd /home/gpu/proj &&", remote_cmd)
-        self.assertIn("docker compose --file compose.yaml run --rm --build", remote_cmd)
+        self.assertIn("docker compose --file compose.yaml run --rm", remote_cmd)
+        self.assertNotIn(" run --rm --build", remote_cmd)
         self.assertIn("worker python main.py --epochs 10", remote_cmd)
+
+    def test_build_remote_build_then_run_command(self) -> None:
+        remote_cmd = build_remote_build_then_run_command(
+            remote_path="/home/gpu/proj",
+            compose_file="compose.yaml",
+            service="worker",
+            command_parts=["python", "main.py"],
+        )
+        self.assertIn("docker compose --file compose.yaml build worker", remote_cmd)
+        self.assertIn(
+            "&& docker compose --file compose.yaml run --rm worker", remote_cmd
+        )
 
     def test_build_remote_run_command_without_file(self) -> None:
         remote_cmd = build_remote_run_command(
@@ -91,7 +107,6 @@ class RunCommandTestCase(unittest.TestCase):
             compose_file=None,
             service="worker",
             command_parts=["python", "main.py"],
-            build=False,
         )
         self.assertIn("docker compose run --rm worker python main.py", remote_cmd)
         self.assertNotIn("--file", remote_cmd)
@@ -147,6 +162,46 @@ class RunCommandTestCase(unittest.TestCase):
         self.assertIn("ubuntu@gpu.example.com", ssh_cmd)
         self.assertIn("docker compose run --rm app python app.py", ssh_cmd[-1])
         self.assertNotIn("--file", ssh_cmd[-1])
+
+    @patch("mudsync.commands.run.subprocess.run")
+    @patch("mudsync.commands.run.resolve_service_name")
+    @patch("mudsync.commands.run.resolve_compose_file")
+    @patch("mudsync.commands.run.get_host_config")
+    @patch("mudsync.commands.run.get_project_name")
+    @patch("mudsync.commands.run.require_project")
+    @patch("mudsync.commands.run.require_config")
+    def test_build_option_runs_build_then_run(
+        self,
+        require_config_mock,
+        require_project_mock,
+        get_project_name_mock,
+        get_host_config_mock,
+        resolve_compose_file_mock,
+        resolve_service_name_mock,
+        subprocess_run_mock,
+    ) -> None:
+        require_config_mock.return_value = SimpleNamespace(
+            ssh_host="gpu",
+            remote_home="/home/user",
+        )
+        require_project_mock.return_value = Path("/tmp/proj")
+        get_project_name_mock.return_value = "proj"
+        get_host_config_mock.return_value = SSHHost(
+            host="gpu",
+            hostname="gpu.example.com",
+            user="ubuntu",
+            port=22,
+            identity_file=None,
+        )
+        resolve_compose_file_mock.return_value = None
+        resolve_service_name_mock.return_value = "app"
+        subprocess_run_mock.return_value = SimpleNamespace(returncode=0)
+
+        command(cmd=["python", "app.py"], build=True)
+
+        ssh_cmd = subprocess_run_mock.call_args.args[0]
+        self.assertIn("docker compose build app", ssh_cmd[-1])
+        self.assertIn("&& docker compose run --rm app python app.py", ssh_cmd[-1])
 
     @patch("mudsync.commands.run.subprocess.run")
     @patch("mudsync.commands.run.sync_cmd.command")
