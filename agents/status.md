@@ -31,9 +31,8 @@
   - `--file` 未指定時は `docker compose` の既定探索に委譲するよう修正（`--file` を渡さない）
   - 不要な `from __future__ import annotations` を関連ファイルから削除
 - 現在作業中:
-  - テスト実行による回帰確認
+  - CLI help 仕様確認（`mudsync --help`, `run --help`, `jupyter --help`）
 - 現在の課題:
   - なし（現時点で既知のブロッカーなし）
 - 次のステップ:
-  1. `uv run python -m unittest discover -s tests` を実行
-  2. 失敗時は実装修正後に再実行
+  1. 追加要望があれば仕様に沿って対応
