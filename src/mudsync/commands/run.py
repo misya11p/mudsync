@@ -20,9 +20,18 @@ def build_remote_run_command(
     compose_file: str | None,
     service: str,
     command_parts: list[str],
+    no_rm: bool,
+    detach: bool,
+    name: str | None,
 ) -> str:
     compose_args = build_compose_base_args(compose_file)
-    run_args = [*compose_args, "run", "--rm"]
+    run_args = [*compose_args, "run"]
+    if not no_rm:
+        run_args.append("--rm")
+    if detach:
+        run_args.append("--detach")
+    if name:
+        run_args.extend(["--name", name])
     run_args.append(service)
     run_args.extend(command_parts)
 
@@ -36,10 +45,20 @@ def build_remote_build_then_run_command(
     compose_file: str | None,
     service: str,
     command_parts: list[str],
+    no_rm: bool,
+    detach: bool,
+    name: str | None,
 ) -> str:
     compose_args = build_compose_base_args(compose_file)
     build_args = [*compose_args, "build", service]
-    run_args = [*compose_args, "run", "--rm", service, *command_parts]
+    run_args = [*compose_args, "run"]
+    if not no_rm:
+        run_args.append("--rm")
+    if detach:
+        run_args.append("--detach")
+    if name:
+        run_args.extend(["--name", name])
+    run_args.extend([service, *command_parts])
 
     quoted_build = [shlex.quote(part) for part in build_args]
     quoted_run = [shlex.quote(part) for part in run_args]
@@ -60,6 +79,9 @@ def command(
     build: bool = False,
     sync: bool = False,
     compose_file: str | None = None,
+    no_rm: bool = False,
+    detach: bool = False,
+    name: str | None = None,
 ):
     if not cmd:
         raise SystemExit("Error: COMMAND is required")
@@ -88,6 +110,9 @@ def command(
             resolved_file,
             resolved_service,
             cmd,
+            no_rm,
+            detach,
+            name,
         )
     else:
         remote_cmd = build_remote_run_command(
@@ -95,6 +120,9 @@ def command(
             resolved_file,
             resolved_service,
             cmd,
+            no_rm,
+            detach,
+            name,
         )
     ssh_cmd = build_ssh_command(ssh_info, remote_cmd)
 

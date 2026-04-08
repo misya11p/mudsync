@@ -39,6 +39,9 @@ class CLITestCase(unittest.TestCase):
             build=False,
             sync=False,
             compose_file=None,
+            no_rm=False,
+            detach=False,
+            name=None,
         )
 
     @patch("mudsync.cli.run_cmd.command")
@@ -56,6 +59,9 @@ class CLITestCase(unittest.TestCase):
             build=True,
             sync=False,
             compose_file=None,
+            no_rm=False,
+            detach=False,
+            name=None,
         )
 
     @patch("mudsync.cli.run_cmd.command")
@@ -73,6 +79,37 @@ class CLITestCase(unittest.TestCase):
             build=True,
             sync=False,
             compose_file=None,
+            no_rm=False,
+            detach=False,
+            name=None,
+        )
+
+    @patch("mudsync.cli.run_cmd.command")
+    def test_run_parses_run_control_options(self, run_command_mock) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "--no-rm",
+                "--detach",
+                "--name",
+                "train-run-01",
+                "python",
+                "train.py",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        run_command_mock.assert_called_once_with(
+            cmd=["python", "train.py"],
+            service=None,
+            build=False,
+            sync=False,
+            compose_file=None,
+            no_rm=True,
+            detach=True,
+            name="train-run-01",
         )
 
 
@@ -83,6 +120,9 @@ class RunCommandTestCase(unittest.TestCase):
             compose_file="compose.yaml",
             service="worker",
             command_parts=["python", "main.py", "--epochs", "10"],
+            no_rm=False,
+            detach=False,
+            name=None,
         )
         self.assertIn("cd /home/gpu/proj &&", remote_cmd)
         self.assertIn("docker compose --file compose.yaml run --rm", remote_cmd)
@@ -95,6 +135,9 @@ class RunCommandTestCase(unittest.TestCase):
             compose_file="compose.yaml",
             service="worker",
             command_parts=["python", "main.py"],
+            no_rm=False,
+            detach=False,
+            name=None,
         )
         self.assertIn("docker compose --file compose.yaml build worker", remote_cmd)
         self.assertIn(
@@ -107,9 +150,25 @@ class RunCommandTestCase(unittest.TestCase):
             compose_file=None,
             service="worker",
             command_parts=["python", "main.py"],
+            no_rm=False,
+            detach=False,
+            name=None,
         )
         self.assertIn("docker compose run --rm worker python main.py", remote_cmd)
         self.assertNotIn("--file", remote_cmd)
+
+    def test_build_remote_run_command_with_no_rm_detach_and_name(self) -> None:
+        remote_cmd = build_remote_run_command(
+            remote_path="/home/gpu/proj",
+            compose_file=None,
+            service="worker",
+            command_parts=["python", "main.py"],
+            no_rm=True,
+            detach=True,
+            name="custom-run",
+        )
+        self.assertIn("docker compose run --detach --name custom-run", remote_cmd)
+        self.assertNotIn(" --rm ", remote_cmd)
 
     @patch("mudsync.commands.run.subprocess.run")
     @patch("mudsync.commands.run.sync_cmd.command")
@@ -153,6 +212,9 @@ class RunCommandTestCase(unittest.TestCase):
             build=False,
             sync=True,
             compose_file=None,
+            no_rm=False,
+            detach=False,
+            name=None,
         )
 
         sync_mock.assert_called_once()
@@ -202,6 +264,53 @@ class RunCommandTestCase(unittest.TestCase):
         ssh_cmd = subprocess_run_mock.call_args.args[0]
         self.assertIn("docker compose build app", ssh_cmd[-1])
         self.assertIn("&& docker compose run --rm app python app.py", ssh_cmd[-1])
+
+    @patch("mudsync.commands.run.subprocess.run")
+    @patch("mudsync.commands.run.resolve_service_name")
+    @patch("mudsync.commands.run.resolve_compose_file")
+    @patch("mudsync.commands.run.get_host_config")
+    @patch("mudsync.commands.run.get_project_name")
+    @patch("mudsync.commands.run.require_project")
+    @patch("mudsync.commands.run.require_config")
+    def test_command_applies_no_rm_detach_and_name(
+        self,
+        require_config_mock,
+        require_project_mock,
+        get_project_name_mock,
+        get_host_config_mock,
+        resolve_compose_file_mock,
+        resolve_service_name_mock,
+        subprocess_run_mock,
+    ) -> None:
+        require_config_mock.return_value = SimpleNamespace(
+            ssh_host="gpu",
+            remote_home="/home/user",
+        )
+        require_project_mock.return_value = Path("/tmp/proj")
+        get_project_name_mock.return_value = "proj"
+        get_host_config_mock.return_value = SSHHost(
+            host="gpu",
+            hostname="gpu.example.com",
+            user="ubuntu",
+            port=22,
+            identity_file=None,
+        )
+        resolve_compose_file_mock.return_value = None
+        resolve_service_name_mock.return_value = "app"
+        subprocess_run_mock.return_value = SimpleNamespace(returncode=0)
+
+        command(
+            cmd=["python", "app.py"],
+            no_rm=True,
+            detach=True,
+            name="run-test",
+        )
+
+        ssh_cmd = subprocess_run_mock.call_args.args[0]
+        self.assertIn(
+            "docker compose run --detach --name run-test app python app.py", ssh_cmd[-1]
+        )
+        self.assertNotIn(" --rm ", ssh_cmd[-1])
 
     @patch("mudsync.commands.run.subprocess.run")
     @patch("mudsync.commands.run.sync_cmd.command")

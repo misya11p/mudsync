@@ -81,6 +81,22 @@ def run(
         "-f",
         help="Compose file path",
     ),
+    no_rm: bool = typer.Option(
+        False,
+        "--no-rm",
+        help="Do not remove container after run",
+    ),
+    detach: bool = typer.Option(
+        False,
+        "--detach",
+        "-d",
+        help="Run container in background",
+    ),
+    name: str | None = typer.Option(
+        None,
+        "--name",
+        help="Assign a container name",
+    ),
 ):
     """Run a command in a compose service on GPU server"""
     command_parts = [*cmd, *ctx.args]
@@ -90,6 +106,9 @@ def run(
         build=build,
         sync=sync,
         compose_file=compose_file,
+        no_rm=no_rm,
+        detach=detach,
+        name=name,
     )
 
 

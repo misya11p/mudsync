@@ -19,25 +19,24 @@
 ## Current status
 - 種別: instructions 完了
 - 受領指示:
-  1. `config` で現在設定値をデフォルト値として表示
-  2. `config` のサーバー選択順を文字列順で固定
-  3. `config` と `manage` で終了導線を追加（会話中に Ctrl+C でも可）
+  1. `run` を compose yaml 前提へ戻し、`gpus` などの追加は取り下げ
+  2. `run` に `--no-rm` を追加（指定時は `--rm` を付けない）
+  3. `run` に `-d` / `--detach` を追加
+  4. `run` に `--name` を追加
 - 完了済み:
-  - `src/mudsync/commands/config.py`
-    - サーバー一覧を `sorted()` で安定ソート
-    - 既存設定を読み込み、`ssh_host` と `remote_home` をプロンプトのデフォルトに反映
-    - `mandatory=False` + キーバインドで `Esc` / `Ctrl+C` キャンセル時は `Config cancelled.` で正常終了
-    - `global_excludes` を再設定時にも保持
-  - `src/mudsync/commands/manage.py`
-    - 操作ヘルプに `esc/q/ctrl+c: cancel` を追加
-    - `escape` / `q` キーで `cancelled` 終了できるよう追加
-    - キャンセル時に `Sync rules update cancelled.` を表示
-  - `tests/test_config.py` を追加
-    - ソート済み選択肢、既存値デフォルト反映、`global_excludes` 保持を検証
-    - キャンセル時に保存されないことを検証
+  - `src/mudsync/cli.py`
+    - `run` に `--no-rm`, `--detach/-d`, `--name` を追加
+    - `run_cmd.command(...)` へ新オプションを受け渡し
+  - `src/mudsync/commands/run.py`
+    - `build_remote_run_command` と `build_remote_build_then_run_command` に
+      `no_rm` / `detach` / `name` 適用ロジックを追加
+    - `command()` に同オプションを追加し、生成コマンドへ反映
+  - `tests/test_cli_and_run.py`
+    - CLI引数パース（`--no-rm`, `--detach`, `--name`）の検証を追加
+    - リモートコマンド生成で `--rm` の有無、`--detach` / `--name` 反映を検証
 - 検証結果:
   - `uv run python -m unittest discover -s tests`
-  - 19 tests passed
+  - 22 tests passed
 - 現在作業中:
   - なし
 - 現在の課題:
