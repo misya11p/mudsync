@@ -1,122 +1,155 @@
+from __future__ import annotations
+
 import re
+import shlex
 import subprocess
-import time
+from urllib.parse import urlparse, urlunparse
 
 import typer
 
-from mudsync.commands.build import build_container_name
+from mudsync.commands import sync as sync_cmd
+from mudsync.commands.compose import (
+    build_compose_base_args,
+    build_ssh_command,
+    resolve_compose_file,
+    resolve_service_name,
+)
 from mudsync.config import require_config
 from mudsync.project import get_project_name, require_project
 from mudsync.ssh_config import SSHHost, get_host_config
 
+JUPYTER_URL_PATTERN = re.compile(r"https?://[^\s]*token=[^\s]+")
 
-def command(port: int = typer.Option(8888, "--port", "-p", help="Local port number")):
+
+def build_remote_up_command(
+    remote_path: str,
+    compose_file: str | None,
+    service: str,
+    build: bool,
+) -> str:
+    compose_args = build_compose_base_args(compose_file)
+    up_args = [*compose_args, "up"]
+    if build:
+        up_args.append("--build")
+    up_args.append(service)
+
+    quoted = [shlex.quote(part) for part in up_args]
+    command_parts = ["cd", shlex.quote(remote_path), "&&", *quoted]
+    return " ".join(command_parts)
+
+
+def build_remote_down_command(
+    remote_path: str,
+    compose_file: str | None,
+) -> str:
+    compose_args = build_compose_base_args(compose_file)
+    down_args = [*compose_args, "down"]
+    quoted = [shlex.quote(part) for part in down_args]
+    command_parts = ["cd", shlex.quote(remote_path), "&&", *quoted]
+    return " ".join(command_parts)
+
+
+def replace_url_host_port(url: str, ssh_info: SSHHost, port: int) -> str:
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        return url
+
+    rewritten = parsed._replace(netloc=f"{ssh_info.hostname}:{port}")
+    return urlunparse(rewritten)
+
+
+def extract_jupyter_url(log_line: str) -> str | None:
+    match = JUPYTER_URL_PATTERN.search(log_line)
+    if not match:
+        return None
+    return match.group(0)
+
+
+def _run_compose_down(
+    ssh_info: SSHHost,
+    remote_path: str,
+    compose_file: str | None,
+) -> None:
+    down_cmd = build_remote_down_command(remote_path, compose_file)
+    ssh_cmd = build_ssh_command(ssh_info, down_cmd)
+    subprocess.run(ssh_cmd, check=False)
+
+
+def command(
+    port: int = 8888,
+    service: str | None = None,
+    build: bool = False,
+    sync: bool = False,
+    compose_file: str | None = None,
+) -> None:
     app_config = require_config()
     project_root = require_project()
     proj_name = get_project_name(project_root)
     ssh_info = get_host_config(app_config.ssh_host)
 
-    container_name = build_container_name(
-        ssh_info.user, app_config.remote_home, proj_name
-    )
-
     remote_path = f"{app_config.remote_home}/{proj_name}"
-
-    typer.echo(f"Starting Jupyter Lab on {ssh_info.hostname}...")
-    typer.echo(f"Port: {port}")
-    typer.echo()
-
-    jupyter_cmd = (
-        f"docker run --gpus all -d --rm "
-        f"-v {remote_path}:/workspace "
-        f"-w /workspace "
-        f"-p {port}:8888 "
-        f"{container_name} "
-        f"jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root"
+    resolved_file = resolve_compose_file(project_root, compose_file)
+    resolved_service = resolve_service_name(
+        ssh_info,
+        remote_path,
+        resolved_file,
+        service,
     )
 
-    ssh_cmd = [
-        "ssh",
-    ]
-    if ssh_info.port != 22:
-        ssh_cmd.extend(["-p", str(ssh_info.port)])
-    if ssh_info.identity_file:
-        ssh_cmd.extend(["-i", ssh_info.identity_file])
-    ssh_cmd.append(f"{ssh_info.user}@{ssh_info.hostname}")
-    ssh_cmd.append(jupyter_cmd)
+    if sync:
+        sync_cmd.command()
+
+    up_cmd = build_remote_up_command(
+        remote_path,
+        resolved_file,
+        resolved_service,
+        build,
+    )
+    ssh_cmd = build_ssh_command(ssh_info, up_cmd)
+
+    typer.echo(f"Starting Jupyter service on {ssh_info.hostname}...")
+    typer.echo("Press Ctrl+C to stop and run compose down.")
+    typer.echo()
+
+    displayed_url = False
+    process = subprocess.Popen(
+        ssh_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
 
     try:
-        result = subprocess.run(
-            ssh_cmd,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        container_id = result.stdout.strip()
-        typer.echo(f"Jupyter container started: {container_id[:12]}")
-    except subprocess.CalledProcessError as e:
-        raise SystemExit(f"Error: Failed to start Jupyter Lab.\nstderr: {e.stderr}")
-    except FileNotFoundError:
-        raise SystemExit("Error: ssh command not found")
+        assert process.stdout is not None
+        for line in process.stdout:
+            typer.echo(line, nl=False)
+            if displayed_url:
+                continue
+            detected_url = extract_jupyter_url(line)
+            if not detected_url:
+                continue
 
-    typer.echo("Waiting for Jupyter Lab to start...")
-    time.sleep(5)
-
-    token = get_jupyter_token(ssh_info, container_id)
-
-    typer.echo()
-    typer.echo(f"Jupyter Lab URL: http://localhost:{port}/?token={token}")
-    typer.echo()
-    typer.echo("Starting port forwarding... (Press Ctrl+C to stop)")
-
-    forward_cmd = [
-        "ssh",
-        "-L",
-        f"{port}:localhost:{port}",
-    ]
-    if ssh_info.port != 22:
-        forward_cmd.extend(["-p", str(ssh_info.port)])
-    if ssh_info.identity_file:
-        forward_cmd.extend(["-i", ssh_info.identity_file])
-    forward_cmd.extend([f"{ssh_info.user}@{ssh_info.hostname}", "-N"])
-
-    try:
-        subprocess.run(forward_cmd, check=True)
+            rewritten = replace_url_host_port(detected_url, ssh_info, port)
+            typer.echo()
+            typer.echo(f"Jupyter Lab URL: {rewritten}")
+            typer.echo()
+            displayed_url = True
     except KeyboardInterrupt:
-        typer.echo("\nPort forwarding stopped.")
-    except subprocess.CalledProcessError as e:
-        raise SystemExit(f"Error: Port forwarding failed: {e}")
+        typer.echo("\nStopping Jupyter service...")
+        process.terminate()
+        process.wait(timeout=10)
+        _run_compose_down(ssh_info, remote_path, resolved_file)
+        return
+    except FileNotFoundError as exc:
+        raise SystemExit("Error: ssh command not found") from exc
 
+    return_code = process.wait()
+    if return_code != 0:
+        raise SystemExit(return_code)
 
-def get_jupyter_token(ssh_info: SSHHost, container_id: str) -> str:
-    ssh_cmd = [
-        "ssh",
-    ]
-    if ssh_info.port != 22:
-        ssh_cmd.extend(["-p", str(ssh_info.port)])
-    if ssh_info.identity_file:
-        ssh_cmd.extend(["-i", ssh_info.identity_file])
-    ssh_cmd.append(f"{ssh_info.user}@{ssh_info.hostname}")
-
-    log_cmd = f"docker logs {container_id} 2>&1 | grep -oP 'token=[a-f0-9]+' | head -1"
-    ssh_cmd.append(log_cmd)
-
-    for attempt in range(10):
-        try:
-            result = subprocess.run(
-                ssh_cmd,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            output = result.stdout.strip()
-            if output:
-                match = re.search(r"token=([a-f0-9]+)", output)
-                if match:
-                    return match.group(1)
-        except subprocess.CalledProcessError:
-            pass
-
-        time.sleep(2)
-
-    return ""
+    if not displayed_url:
+        typer.echo()
+        typer.echo(
+            "Note: Could not auto-detect Jupyter URL from logs. "
+            "Check output above for the token URL."
+        )

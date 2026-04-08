@@ -4,7 +4,6 @@ from mudsync.commands import show as show_cmd
 from mudsync.commands import connect as connect_cmd
 from mudsync.commands import manage as manage_cmd
 from mudsync.commands import sync as sync_cmd
-from mudsync.commands import build as build_cmd
 from mudsync.commands import run as run_cmd
 from mudsync.commands import jupyter as jupyter_cmd
 
@@ -46,21 +45,79 @@ def sync():
 
 
 @app.command()
-def build():
-    """Build Docker image on GPU server"""
-    build_cmd.command()
+def run(
+    cmd: str = typer.Argument(..., metavar="COMMAND", help="Command to run"),
+    service: str | None = typer.Option(
+        None,
+        "--service",
+        "-s",
+        help="Compose service name",
+    ),
+    build: bool = typer.Option(
+        False,
+        "--build",
+        "-b",
+        help="Build images before run",
+    ),
+    sync: bool = typer.Option(
+        False,
+        "--sync",
+        "-y",
+        help="Run sync before command",
+    ),
+    compose_file: str | None = typer.Option(
+        None,
+        "--file",
+        "-f",
+        help="Compose file path",
+    ),
+):
+    """Run a command in a compose service on GPU server"""
+    run_cmd.command(
+        cmd=cmd,
+        service=service,
+        build=build,
+        sync=sync,
+        compose_file=compose_file,
+    )
 
 
 @app.command()
-def run(cmd: str | None = typer.Argument(None, help="Command to run in container")):
-    """Run a command in Docker container on GPU server"""
-    run_cmd.command(cmd)
-
-
-@app.command()
-def jupyter(port: int = typer.Option(8888, "--port", "-p", help="Local port number")):
-    """Start Jupyter Lab on GPU server with port forwarding"""
-    jupyter_cmd.command(port)
+def jupyter(
+    port: int = typer.Option(8888, "--port", "-p", help="Local port number"),
+    service: str | None = typer.Option(
+        None,
+        "--service",
+        "-s",
+        help="Compose service name",
+    ),
+    build: bool = typer.Option(
+        False,
+        "--build",
+        "-b",
+        help="Build images before startup",
+    ),
+    sync: bool = typer.Option(
+        False,
+        "--sync",
+        "-y",
+        help="Run sync before startup",
+    ),
+    compose_file: str | None = typer.Option(
+        None,
+        "--file",
+        "-f",
+        help="Compose file path",
+    ),
+):
+    """Start Jupyter service with docker compose"""
+    jupyter_cmd.command(
+        port=port,
+        service=service,
+        build=build,
+        sync=sync,
+        compose_file=compose_file,
+    )
 
 
 if __name__ == "__main__":

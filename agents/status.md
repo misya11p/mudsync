@@ -1,40 +1,37 @@
 ## Project overview
 - `mudsync` は GPU サーバー連携用の Python CLI。
-- 現在の主要コマンドは `config`, `show`, `connect`, `manage`, `sync`, `build`, `run`, `jupyter`。
-- リモート実行は SSH + Docker を利用している。
+- 主要コマンドは `config`, `show`, `connect`, `manage`, `sync`, `run`, `jupyter`。
+- リモート実行は SSH + Docker Compose を中心に利用する構成へ移行中。
 
 ## Code explanations
 - CLI エントリ: `src/mudsync/cli.py`
 - 実行系コマンド:
-  - `src/mudsync/commands/build.py`: リモート `docker build`
-  - `src/mudsync/commands/run.py`: リモート `docker run`
-  - `src/mudsync/commands/jupyter.py`: Jupyter 起動 + token 取得 + port forward
+  - `src/mudsync/commands/run.py`: `docker compose run --rm` 実行
+  - `src/mudsync/commands/jupyter.py`: `docker compose up` フォアグラウンド実行 + URL 検出 + Ctrl+C 時 `down`
+  - `src/mudsync/commands/compose.py`: compose ファイル探索 / service 解決 / SSH コマンド組み立て共通処理
 - 同期系:
   - `src/mudsync/commands/sync.py`: rsync 同期
   - `src/mudsync/commands/manage.py`: 同期ルール管理
+- テスト:
+  - `tests/test_cli_and_run.py`: `build` 廃止、`run` コマンド生成・終了コード伝播
+  - `tests/test_jupyter.py`: URL ヘルパー、`up/down` コマンド生成、Ctrl+C 時 cleanup
 
 ## Current status
-- 種別: plan 実行中
-- 受領指示: 「指示に従い、planを立てなさい」
+- 種別: instructions 実行中
+- 受領指示: 「指示に従い、plan通りにcodingを完了しなさい」
 - 完了済み:
-  - `agents/readme.md` を読み、要求を整理
-  - Docker Compose 公式仕様（`compose run --rm`, `--build`）を確認
-  - 追加合意を反映して計画を更新
-    - `run`: `COMMAND` 必須 + `--build` 明示時のみ再ビルド
-    - service 未指定時は先頭 service 自動採用
-    - compose ファイル既定は `compose.yaml` 優先探索
-    - `jupyter`: 単一コマンド化（フォアグラウンド `up`）
-    - `jupyter`: Ctrl+C で `down` 実行、URL 出力のみ（port forward は保留）
-    - Terminal 強制終了時の完全クリーンアップは今回スコープ外
-  - 計画文書を作成
-    - `agents/plans/plan.md`
-    - `agents/plans/spec.md`
-    - `agents/plans/tasks/01_cli_surface_cleanup.md`
-    - `agents/plans/tasks/02_run_compose_migration.md`
-    - `agents/plans/tasks/03_jupyter_refactor.md`
-    - `agents/plans/tasks/04_tests_and_regression.md`
-- 現在作業中: なし（計画作成フェーズ完了）
+  - `cli.py` から `build` サブコマンドを削除
+  - `run` に `--service`, `--build`, `--sync`, `--file` を追加し、`COMMAND` 必須化
+  - `compose.py` を新設し、compose ファイル探索 / service 自動解決 / SSH 実行共通化を実装
+  - `run.py` を `docker compose run --rm` ベースへ移行
+  - `jupyter.py` を `docker compose up` フォアグラウンド実行へ移行
+  - `jupyter.py` でログから token URL を検出し、Host/Port 差し替え表示を追加
+  - `jupyter.py` で Ctrl+C 時に `docker compose down` を実行する cleanup を追加
+  - `tests/` を新設し、`run` / `jupyter` 回帰テストを追加
+- 現在作業中:
+  - テスト実行による回帰確認
 - 現在の課題:
-  - `jupyter` の URL 抽出失敗時フォールバック表示方針を実装時に確定する必要あり
+  - なし（現時点で既知のブロッカーなし）
 - 次のステップ:
-  1. Task 01 から順に実装開始
+  1. `python -m unittest discover -s tests` を実行
+  2. 失敗時は実装修正後に再実行

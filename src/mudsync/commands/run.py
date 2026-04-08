@@ -3,64 +3,81 @@ import subprocess
 
 import typer
 
-from mudsync.commands.build import build_container_name
+from mudsync.commands import sync as sync_cmd
+from mudsync.commands.compose import (
+    build_compose_base_args,
+    build_ssh_command,
+    resolve_compose_file,
+    resolve_service_name,
+)
 from mudsync.config import require_config
 from mudsync.project import get_project_name, require_project
 from mudsync.ssh_config import get_host_config
 
 
-def command(cmd: str | None = None):
+def build_remote_run_command(
+    remote_path: str,
+    compose_file: str | None,
+    service: str,
+    command: str,
+    build: bool,
+) -> str:
+    compose_args = build_compose_base_args(compose_file)
+    run_args = [*compose_args, "run", "--rm"]
+    if build:
+        run_args.append("--build")
+
+    run_args.append(service)
+    run_args.extend(shlex.split(command))
+
+    quoted = [shlex.quote(part) for part in run_args]
+    command_parts = ["cd", shlex.quote(remote_path), "&&", *quoted]
+    return " ".join(command_parts)
+
+
+def command(
+    cmd: str,
+    service: str | None = None,
+    build: bool = False,
+    sync: bool = False,
+    compose_file: str | None = None,
+):
+    if not cmd.strip():
+        raise SystemExit("Error: COMMAND is required")
+
     app_config = require_config()
     project_root = require_project()
     proj_name = get_project_name(project_root)
     ssh_info = get_host_config(app_config.ssh_host)
 
-    container_name = build_container_name(
-        ssh_info.user, app_config.remote_home, proj_name
+    remote_path = f"{app_config.remote_home}/{proj_name}"
+    resolved_file = resolve_compose_file(project_root, compose_file)
+    resolved_service = resolve_service_name(
+        ssh_info,
+        remote_path,
+        resolved_file,
+        service,
     )
 
-    remote_path = f"{app_config.remote_home}/{proj_name}"
+    if sync:
+        sync_cmd.command()
 
-    docker_cmd = [
-        "docker",
-        "run",
-        "--gpus",
-        "all",
-        "-it",
-        "--rm",
-        "-v",
-        f"{remote_path}:/workspace",
-        "-w",
-        "/workspace",
-    ]
+    remote_cmd = build_remote_run_command(
+        remote_path,
+        resolved_file,
+        resolved_service,
+        cmd,
+        build,
+    )
+    ssh_cmd = build_ssh_command(ssh_info, remote_cmd)
 
-    if cmd:
-        docker_cmd.extend([container_name] + shlex.split(cmd))
-    else:
-        docker_cmd.append(container_name)
-
-    ssh_cmd = [
-        "ssh",
-    ]
-    if ssh_info.port != 22:
-        ssh_cmd.extend(["-p", str(ssh_info.port)])
-    if ssh_info.identity_file:
-        ssh_cmd.extend(["-i", ssh_info.identity_file])
-
-    ssh_cmd.append(f"{ssh_info.user}@{ssh_info.hostname}")
-
-    remote_cmd = " ".join(docker_cmd)
-    ssh_cmd.append(remote_cmd)
-
-    if cmd:
-        typer.echo(f"Running on {ssh_info.hostname}: {cmd}")
-    else:
-        typer.echo(f"Starting container: {container_name}")
+    typer.echo(f"Running on {ssh_info.hostname}: {cmd}")
     typer.echo()
 
     try:
-        result = subprocess.run(ssh_cmd, check=True)
-    except subprocess.CalledProcessError as e:
-        raise SystemExit(f"Error: Command failed with exit code {e.returncode}")
-    except FileNotFoundError:
-        raise SystemExit("Error: ssh command not found")
+        result = subprocess.run(ssh_cmd, check=False)
+    except FileNotFoundError as exc:
+        raise SystemExit("Error: ssh command not found") from exc
+
+    if result.returncode != 0:
+        raise SystemExit(result.returncode)
