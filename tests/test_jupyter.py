@@ -57,6 +57,14 @@ class JupyterHelpersTestCase(unittest.TestCase):
         self.assertIn("docker compose --file compose.yaml up --build notebook", up_cmd)
         self.assertIn("docker compose --file compose.yaml down", down_cmd)
 
+    def test_build_remote_up_and_down_command_without_file(self) -> None:
+        up_cmd = build_remote_up_command("/remote/proj", None, "notebook", False)
+        down_cmd = build_remote_down_command("/remote/proj", None)
+        self.assertIn("docker compose up notebook", up_cmd)
+        self.assertNotIn("--file", up_cmd)
+        self.assertIn("docker compose down", down_cmd)
+        self.assertNotIn("--file", down_cmd)
+
 
 class JupyterCommandTestCase(unittest.TestCase):
     @patch("mudsync.commands.jupyter._run_compose_down")
@@ -91,7 +99,7 @@ class JupyterCommandTestCase(unittest.TestCase):
             port=22,
             identity_file=None,
         )
-        resolve_compose_file_mock.return_value = "compose.yaml"
+        resolve_compose_file_mock.return_value = None
         resolve_service_name_mock.return_value = "notebook"
 
         process_mock = Mock()

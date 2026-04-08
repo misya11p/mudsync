@@ -36,6 +36,17 @@ class RunCommandTestCase(unittest.TestCase):
         self.assertIn("docker compose --file compose.yaml run --rm --build", remote_cmd)
         self.assertIn("worker python main.py --epochs 10", remote_cmd)
 
+    def test_build_remote_run_command_without_file(self) -> None:
+        remote_cmd = build_remote_run_command(
+            remote_path="/home/gpu/proj",
+            compose_file=None,
+            service="worker",
+            command="python main.py",
+            build=False,
+        )
+        self.assertIn("docker compose run --rm worker python main.py", remote_cmd)
+        self.assertNotIn("--file", remote_cmd)
+
     @patch("mudsync.commands.run.subprocess.run")
     @patch("mudsync.commands.run.sync_cmd.command")
     @patch("mudsync.commands.run.resolve_service_name")
@@ -68,7 +79,7 @@ class RunCommandTestCase(unittest.TestCase):
             port=22,
             identity_file=None,
         )
-        resolve_compose_file_mock.return_value = "compose.yaml"
+        resolve_compose_file_mock.return_value = None
         resolve_service_name_mock.return_value = "app"
         subprocess_run_mock.return_value = SimpleNamespace(returncode=0)
 
@@ -85,9 +96,8 @@ class RunCommandTestCase(unittest.TestCase):
         ssh_cmd = subprocess_run_mock.call_args.args[0]
         self.assertEqual(ssh_cmd[0], "ssh")
         self.assertIn("ubuntu@gpu.example.com", ssh_cmd)
-        self.assertIn(
-            "docker compose --file compose.yaml run --rm app python app.py", ssh_cmd[-1]
-        )
+        self.assertIn("docker compose run --rm app python app.py", ssh_cmd[-1])
+        self.assertNotIn("--file", ssh_cmd[-1])
 
     @patch("mudsync.commands.run.subprocess.run")
     @patch("mudsync.commands.run.resolve_service_name")
@@ -119,7 +129,7 @@ class RunCommandTestCase(unittest.TestCase):
             port=22,
             identity_file=None,
         )
-        resolve_compose_file_mock.return_value = "compose.yaml"
+        resolve_compose_file_mock.return_value = None
         resolve_service_name_mock.return_value = "app"
         subprocess_run_mock.return_value = SimpleNamespace(returncode=12)
 

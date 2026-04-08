@@ -8,7 +8,7 @@
 - 実行系コマンド:
   - `src/mudsync/commands/run.py`: `docker compose run --rm` 実行
   - `src/mudsync/commands/jupyter.py`: `docker compose up` フォアグラウンド実行 + URL 検出 + Ctrl+C 時 `down`
-  - `src/mudsync/commands/compose.py`: compose ファイル探索 / service 解決 / SSH コマンド組み立て共通処理
+  - `src/mudsync/commands/compose.py`: `--file` 明示時のみ検証 + service 解決 + SSH コマンド組み立て共通処理
 - 同期系:
   - `src/mudsync/commands/sync.py`: rsync 同期
   - `src/mudsync/commands/manage.py`: 同期ルール管理
@@ -28,10 +28,11 @@
   - `jupyter.py` でログから token URL を検出し、Host/Port 差し替え表示を追加
   - `jupyter.py` で Ctrl+C 時に `docker compose down` を実行する cleanup を追加
   - `tests/` を新設し、`run` / `jupyter` 回帰テストを追加
+  - `--file` 未指定時は `docker compose` の既定探索に委譲するよう修正（`--file` を渡さない）
 - 現在作業中:
   - テスト実行による回帰確認
 - 現在の課題:
   - なし（現時点で既知のブロッカーなし）
 - 次のステップ:
-  1. `python -m unittest discover -s tests` を実行
+  1. `uv run python -m unittest discover -s tests` を実行
   2. 失敗時は実装修正後に再実行

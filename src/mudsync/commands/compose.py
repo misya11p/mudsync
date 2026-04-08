@@ -6,13 +6,6 @@ from pathlib import Path
 
 from mudsync.ssh_config import SSHHost
 
-COMPOSE_FILE_CANDIDATES: tuple[str, ...] = (
-    "compose.yaml",
-    "compose.yml",
-    "docker-compose.yaml",
-    "docker-compose.yml",
-)
-
 
 def build_ssh_command(ssh_info: SSHHost, remote_command: str) -> list[str]:
     ssh_cmd = ["ssh"]
@@ -33,20 +26,15 @@ def build_compose_base_args(compose_file: str | None) -> list[str]:
 
 
 def resolve_compose_file(project_root: Path, compose_file: str | None) -> str | None:
-    if compose_file is not None:
-        fpath_compose = Path(compose_file)
-        if not fpath_compose.exists():
-            fpath_candidate = project_root / compose_file
-            if not fpath_candidate.exists():
-                raise SystemExit(f"Error: compose file not found: {compose_file}")
-        return compose_file
+    if compose_file is None:
+        return None
 
-    for fname_candidate in COMPOSE_FILE_CANDIDATES:
-        if (project_root / fname_candidate).exists():
-            return fname_candidate
-
-    searched = ", ".join(COMPOSE_FILE_CANDIDATES)
-    raise SystemExit(f"Error: compose file not found. Searched: {searched}")
+    fpath_compose = Path(compose_file)
+    if not fpath_compose.exists():
+        fpath_candidate = project_root / compose_file
+        if not fpath_candidate.exists():
+            raise SystemExit(f"Error: compose file not found: {compose_file}")
+    return compose_file
 
 
 def list_services(
