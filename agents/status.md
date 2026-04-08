@@ -23,8 +23,9 @@
     - `run`: `COMMAND` 必須 + `--build` 明示時のみ再ビルド
     - service 未指定時は先頭 service 自動採用
     - compose ファイル既定は `compose.yaml` 優先探索
-    - `jupyter`: `start/stop` サブコマンド化（start=`up -d`, stop=`down`）
-    - `jupyter start` は URL 出力のみ（port forward は保留）
+    - `jupyter`: 単一コマンド化（フォアグラウンド `up`）
+    - `jupyter`: Ctrl+C で `down` 実行、URL 出力のみ（port forward は保留）
+    - Terminal 強制終了時の完全クリーンアップは今回スコープ外
   - 計画文書を作成
     - `agents/plans/plan.md`
     - `agents/plans/spec.md`
@@ -34,6 +35,6 @@
     - `agents/plans/tasks/04_tests_and_regression.md`
 - 現在作業中: なし（計画作成フェーズ完了）
 - 現在の課題:
-  - `jupyter start` の URL 抽出失敗時フォールバック表示方針を実装時に確定する必要あり
+  - `jupyter` の URL 抽出失敗時フォールバック表示方針を実装時に確定する必要あり
 - 次のステップ:
   1. Task 01 から順に実装開始

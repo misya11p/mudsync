@@ -38,27 +38,23 @@
 ### 3. `jupyter` コマンド
 
 #### 3.1 インターフェース
-- 形式:
-  - `mudsync jupyter start [OPTIONS]`
-  - `mudsync jupyter stop [OPTIONS]`
-- `start` オプション:
+- 形式: `mudsync jupyter [OPTIONS]`
+- オプション:
   - `--port`, `-p`（default: 8888）
   - `--service`, `-s`（省略時は先頭 service）
   - `--build`, `-b`
   - `--sync`, `-y`
   - `--file`, `-f`（run と同じ優先順）
-- `stop` オプション:
-  - `--file`, `-f`（run と同じ優先順）
 
 #### 3.2 動作
-- `jupyter start`:
+- `jupyter`:
   1. 必要に応じて `sync` を実行する。
-  2. SSH 経由で `docker compose [--file <path>] up -d [--build] <service>` を実行する。
-  3. SSH 経由で service ログから token 付き URL を抽出する。
+  2. SSH 経由で `docker compose [--file <path>] up [--build] <service>` をフォアグラウンドで実行する。
+  3. 起動ログから token 付き URL を抽出する。
   4. URL のホスト部を `ssh_config` の接続先ホスト（HostName/IP）へ差し替え、`--port` を反映して表示する。
-- `jupyter stop`:
-  - SSH 経由で `docker compose [--file <path>] down` を実行する。
+  5. `Ctrl+C` 受信時に SSH 経由で `docker compose [--file <path>] down` を実行して終了する。
 - 本仕様では SSH port forward は実装対象外（URL 出力のみ）。
+- Terminal 強制終了時の完全クリーンアップ保証は今回のスコープ外とする。
 
 ### 4. テスト仕様
 - 対象: `run.py` / `jupyter.py` のコマンド生成と分岐。
@@ -68,10 +64,10 @@
   - compose ファイル自動探索順
   - service 指定あり/なし
   - `--sync` 指定時の事前同期呼び出し
-  - jupyter start の引数構成と URL 置換
-  - jupyter stop の down 実行
+  - jupyter の引数構成と URL 置換
+  - jupyter 割り込み時の down 実行
 
 ### 5. 外部仕様確認（調査結果）
 - Docker 公式ドキュメントで `docker compose run --rm SERVICE COMMAND` と `--build` 利用を確認済み。
 - Docker 公式ドキュメントで compose 既定ファイルは `compose.yaml`（`compose.yml` などは互換）を確認済み。
-- したがって、現在の `docker run` 直接呼び出しから compose へ置換し、`jupyter` を `up/down` に整理する方針は妥当。
+- したがって、現在の `docker run` 直接呼び出しから compose へ置換し、`jupyter` をフォアグラウンド `up` + 割り込み時 `down` に整理する方針は妥当。
