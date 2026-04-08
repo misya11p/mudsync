@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.scripts]
-mudsync = "mudsync.cli:app"
+msync = "mudsync.cli:app"
 
 [build-system]
 requires = ["hatchling"]
