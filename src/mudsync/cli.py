@@ -4,6 +4,8 @@ from mudsync.commands import show as show_cmd
 from mudsync.commands import connect as connect_cmd
 from mudsync.commands import manage as manage_cmd
 from mudsync.commands import sync as sync_cmd
+from mudsync.commands import push as push_cmd
+from mudsync.commands import pull as pull_cmd
 from mudsync.commands import run as run_cmd
 from mudsync.commands import jupyter as jupyter_cmd
 
@@ -34,7 +36,7 @@ def connect():
 
 @app.command()
 def manage():
-    """Manage files to sync (interactive)"""
+    """Manage exclude rules for sync command (interactive)"""
     manage_cmd.command()
 
 
@@ -42,6 +44,30 @@ def manage():
 def sync():
     """Sync local project to GPU server via rsync"""
     sync_cmd.command()
+
+
+@app.command()
+def push(
+    patterns: list[str] = typer.Argument(
+        ...,
+        metavar="PATTERN [PATTERN ...]",
+        help="Glob patterns to transfer from local to remote",
+    ),
+):
+    """Push filtered files from local project to GPU server"""
+    push_cmd.command(patterns)
+
+
+@app.command()
+def pull(
+    patterns: list[str] = typer.Argument(
+        ...,
+        metavar="PATTERN [PATTERN ...]",
+        help="Glob patterns to transfer from remote to local",
+    ),
+):
+    """Pull filtered files from GPU server to local project"""
+    pull_cmd.command(patterns)
 
 
 @app.command(

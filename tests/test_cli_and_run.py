@@ -24,6 +24,33 @@ class CLITestCase(unittest.TestCase):
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("No such command 'build'", result.output)
 
+    def test_push_and_pull_commands_exist(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(app, ["--help"])
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("push", result.output)
+        self.assertIn("pull", result.output)
+
+    @patch("mudsync.cli.push_cmd.command")
+    def test_push_forwards_patterns(self, push_command_mock) -> None:
+        runner = CliRunner()
+        result = runner.invoke(app, ["push", "models/*.pt", "logs/**/*.json"])
+        self.assertEqual(result.exit_code, 0)
+        push_command_mock.assert_called_once_with(["models/*.pt", "logs/**/*.json"])
+
+    @patch("mudsync.cli.pull_cmd.command")
+    def test_pull_forwards_patterns(self, pull_command_mock) -> None:
+        runner = CliRunner()
+        result = runner.invoke(app, ["pull", "outputs/*.csv"])
+        self.assertEqual(result.exit_code, 0)
+        pull_command_mock.assert_called_once_with(["outputs/*.csv"])
+
+    def test_push_requires_pattern_argument(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(app, ["push"])
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("Missing argument", result.output)
+
     @patch("mudsync.cli.run_cmd.command")
     def test_run_accepts_multi_token_command(self, run_command_mock) -> None:
         runner = CliRunner()
