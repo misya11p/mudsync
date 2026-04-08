@@ -7,7 +7,6 @@ from mudsync.commands import sync as sync_cmd
 from mudsync.commands import push as push_cmd
 from mudsync.commands import pull as pull_cmd
 from mudsync.commands import run as run_cmd
-from mudsync.commands import jupyter as jupyter_cmd
 
 
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
@@ -135,44 +134,6 @@ def run(
         no_rm=no_rm,
         detach=detach,
         name=name,
-    )
-
-
-@app.command()
-def jupyter(
-    port: int = typer.Option(8888, "--port", "-p", help="Local port number"),
-    service: str | None = typer.Option(
-        None,
-        "--service",
-        "-s",
-        help="Compose service name",
-    ),
-    build: bool = typer.Option(
-        False,
-        "--build",
-        "-b",
-        help="Build images before startup",
-    ),
-    sync: bool = typer.Option(
-        False,
-        "--sync",
-        "-y",
-        help="Run sync before startup",
-    ),
-    compose_file: str | None = typer.Option(
-        None,
-        "--file",
-        "-f",
-        help="Compose file path",
-    ),
-):
-    """Start Jupyter service with docker compose"""
-    jupyter_cmd.command(
-        port=port,
-        service=service,
-        build=build,
-        sync=sync,
-        compose_file=compose_file,
     )
 
 
