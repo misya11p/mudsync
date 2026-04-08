@@ -52,8 +52,8 @@ def sync():
 )
 def run(
     ctx: typer.Context,
-    cmd: list[str] = typer.Argument(
-        ...,
+    cmd: list[str] | None = typer.Argument(
+        None,
         metavar="COMMAND [ARGS]...",
         help="Command and arguments to run",
     ),
@@ -99,7 +99,7 @@ def run(
     ),
 ):
     """Run a command in a compose service on GPU server"""
-    command_parts = [*cmd, *ctx.args]
+    command_parts = [*(cmd or []), *ctx.args]
     run_cmd.command(
         cmd=command_parts,
         service=service,

@@ -74,7 +74,7 @@ def build_remote_build_then_run_command(
 
 
 def command(
-    cmd: list[str],
+    cmd: list[str] | None,
     service: str | None = None,
     build: bool = False,
     sync: bool = False,
@@ -83,8 +83,7 @@ def command(
     detach: bool = False,
     name: str | None = None,
 ):
-    if not cmd:
-        raise SystemExit("Error: COMMAND is required")
+    command_parts = list(cmd or [])
 
     app_config = require_config()
     project_root = require_project()
@@ -109,7 +108,7 @@ def command(
             remote_path,
             resolved_file,
             resolved_service,
-            cmd,
+            command_parts,
             no_rm,
             detach,
             name,
@@ -119,14 +118,17 @@ def command(
             remote_path,
             resolved_file,
             resolved_service,
-            cmd,
+            command_parts,
             no_rm,
             detach,
             name,
         )
     ssh_cmd = build_ssh_command(ssh_info, remote_cmd)
 
-    display_command = " ".join(shlex.quote(part) for part in cmd)
+    if command_parts:
+        display_command = " ".join(shlex.quote(part) for part in command_parts)
+    else:
+        display_command = "(service default command)"
     typer.echo(f"Running on {ssh_info.hostname}: {display_command}")
     typer.echo()
 
