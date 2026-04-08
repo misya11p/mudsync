@@ -19,7 +19,7 @@ def build_remote_run_command(
     remote_path: str,
     compose_file: str | None,
     service: str,
-    command: str,
+    command_parts: list[str],
     build: bool,
 ) -> str:
     compose_args = build_compose_base_args(compose_file)
@@ -28,7 +28,7 @@ def build_remote_run_command(
         run_args.append("--build")
 
     run_args.append(service)
-    run_args.extend(shlex.split(command))
+    run_args.extend(command_parts)
 
     quoted = [shlex.quote(part) for part in run_args]
     command_parts = ["cd", shlex.quote(remote_path), "&&", *quoted]
@@ -36,13 +36,13 @@ def build_remote_run_command(
 
 
 def command(
-    cmd: str,
+    cmd: list[str],
     service: str | None = None,
     build: bool = False,
     sync: bool = False,
     compose_file: str | None = None,
 ):
-    if not cmd.strip():
+    if not cmd:
         raise SystemExit("Error: COMMAND is required")
 
     app_config = require_config()
@@ -71,7 +71,8 @@ def command(
     )
     ssh_cmd = build_ssh_command(ssh_info, remote_cmd)
 
-    typer.echo(f"Running on {ssh_info.hostname}: {cmd}")
+    display_command = " ".join(shlex.quote(part) for part in cmd)
+    typer.echo(f"Running on {ssh_info.hostname}: {display_command}")
     typer.echo()
 
     try:

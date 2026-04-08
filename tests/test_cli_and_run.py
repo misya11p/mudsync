@@ -20,6 +20,23 @@ class CLITestCase(unittest.TestCase):
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("No such command 'build'", result.output)
 
+    @patch("mudsync.cli.run_cmd.command")
+    def test_run_accepts_multi_token_command(self, run_command_mock) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["run", "python", "eval.py", "--arg1", "val1"],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        run_command_mock.assert_called_once_with(
+            cmd=["python", "eval.py", "--arg1", "val1"],
+            service=None,
+            build=False,
+            sync=False,
+            compose_file=None,
+        )
+
 
 class RunCommandTestCase(unittest.TestCase):
     def test_build_remote_run_command(self) -> None:
@@ -27,7 +44,7 @@ class RunCommandTestCase(unittest.TestCase):
             remote_path="/home/gpu/proj",
             compose_file="compose.yaml",
             service="worker",
-            command="python main.py --epochs 10",
+            command_parts=["python", "main.py", "--epochs", "10"],
             build=True,
         )
         self.assertIn("cd /home/gpu/proj &&", remote_cmd)
@@ -39,7 +56,7 @@ class RunCommandTestCase(unittest.TestCase):
             remote_path="/home/gpu/proj",
             compose_file=None,
             service="worker",
-            command="python main.py",
+            command_parts=["python", "main.py"],
             build=False,
         )
         self.assertIn("docker compose run --rm worker python main.py", remote_cmd)
@@ -82,7 +99,7 @@ class RunCommandTestCase(unittest.TestCase):
         subprocess_run_mock.return_value = SimpleNamespace(returncode=0)
 
         command(
-            cmd="python app.py",
+            cmd=["python", "app.py"],
             service=None,
             build=False,
             sync=True,
@@ -132,7 +149,7 @@ class RunCommandTestCase(unittest.TestCase):
         subprocess_run_mock.return_value = SimpleNamespace(returncode=12)
 
         with self.assertRaises(SystemExit) as ctx:
-            command(cmd="python app.py")
+            command(cmd=["python", "app.py"])
         self.assertEqual(ctx.exception.code, 12)
 
 

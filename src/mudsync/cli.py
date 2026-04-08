@@ -44,9 +44,19 @@ def sync():
     sync_cmd.command()
 
 
-@app.command()
+@app.command(
+    context_settings={
+        "allow_extra_args": True,
+        "ignore_unknown_options": True,
+    }
+)
 def run(
-    cmd: str = typer.Argument(..., metavar="COMMAND", help="Command to run"),
+    ctx: typer.Context,
+    cmd: list[str] = typer.Argument(
+        ...,
+        metavar="COMMAND [ARGS]...",
+        help="Command and arguments to run",
+    ),
     service: str | None = typer.Option(
         None,
         "--service",
@@ -73,8 +83,9 @@ def run(
     ),
 ):
     """Run a command in a compose service on GPU server"""
+    command_parts = [*cmd, *ctx.args]
     run_cmd.command(
-        cmd=cmd,
+        cmd=command_parts,
         service=service,
         build=build,
         sync=sync,
