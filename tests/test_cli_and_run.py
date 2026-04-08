@@ -115,6 +115,61 @@ class RunCommandTestCase(unittest.TestCase):
         self.assertNotIn("--file", ssh_cmd[-1])
 
     @patch("mudsync.commands.run.subprocess.run")
+    @patch("mudsync.commands.run.sync_cmd.command")
+    @patch("mudsync.commands.run.resolve_service_name")
+    @patch("mudsync.commands.run.resolve_compose_file")
+    @patch("mudsync.commands.run.get_host_config")
+    @patch("mudsync.commands.run.get_project_name")
+    @patch("mudsync.commands.run.require_project")
+    @patch("mudsync.commands.run.require_config")
+    def test_sync_runs_before_service_resolution(
+        self,
+        require_config_mock,
+        require_project_mock,
+        get_project_name_mock,
+        get_host_config_mock,
+        resolve_compose_file_mock,
+        resolve_service_name_mock,
+        sync_mock,
+        subprocess_run_mock,
+    ) -> None:
+        call_order: list[str] = []
+
+        require_config_mock.return_value = SimpleNamespace(
+            ssh_host="gpu",
+            remote_home="/home/user",
+        )
+        require_project_mock.return_value = Path("/tmp/proj")
+        get_project_name_mock.return_value = "proj"
+        get_host_config_mock.return_value = SSHHost(
+            host="gpu",
+            hostname="gpu.example.com",
+            user="ubuntu",
+            port=22,
+            identity_file=None,
+        )
+        resolve_compose_file_mock.return_value = None
+        resolve_service_name_mock.return_value = "app"
+        subprocess_run_mock.return_value = SimpleNamespace(returncode=0)
+
+        def sync_side_effect() -> None:
+            call_order.append("sync")
+
+        def resolve_service_side_effect(*args, **kwargs) -> str:
+            call_order.append("resolve_service")
+            return "app"
+
+        sync_mock.side_effect = sync_side_effect
+        resolve_service_name_mock.side_effect = resolve_service_side_effect
+
+        command(
+            cmd=["python", "app.py"],
+            sync=True,
+        )
+
+        self.assertEqual(call_order[:2], ["sync", "resolve_service"])
+
+    @patch("mudsync.commands.run.subprocess.run")
     @patch("mudsync.commands.run.resolve_service_name")
     @patch("mudsync.commands.run.resolve_compose_file")
     @patch("mudsync.commands.run.get_host_config")

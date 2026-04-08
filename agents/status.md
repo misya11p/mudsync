@@ -31,6 +31,7 @@
   - `--file` 未指定時は `docker compose` の既定探索に委譲するよう修正（`--file` を渡さない）
   - 不要な `from __future__ import annotations` を関連ファイルから削除
   - `run` が複数トークンのコマンド引数（例: `python eval.py --arg1 val1`）を受け取れるよう修正
+  - `--sync` 指定時は service 解決より先に同期を実行するよう順序を修正（`run` / `jupyter`）
 - 現在作業中:
   - なし
 - 現在の課題:

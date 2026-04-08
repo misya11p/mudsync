@@ -110,6 +110,61 @@ class JupyterCommandTestCase(unittest.TestCase):
         process_mock.terminate.assert_called_once()
         run_compose_down_mock.assert_called_once()
 
+    @patch("mudsync.commands.jupyter.subprocess.Popen")
+    @patch("mudsync.commands.jupyter.resolve_service_name")
+    @patch("mudsync.commands.jupyter.sync_cmd.command")
+    @patch("mudsync.commands.jupyter.resolve_compose_file")
+    @patch("mudsync.commands.jupyter.get_host_config")
+    @patch("mudsync.commands.jupyter.get_project_name")
+    @patch("mudsync.commands.jupyter.require_project")
+    @patch("mudsync.commands.jupyter.require_config")
+    def test_sync_runs_before_service_resolution(
+        self,
+        require_config_mock,
+        require_project_mock,
+        get_project_name_mock,
+        get_host_config_mock,
+        resolve_compose_file_mock,
+        sync_mock,
+        resolve_service_name_mock,
+        popen_mock,
+    ) -> None:
+        call_order: list[str] = []
+
+        require_config_mock.return_value = SimpleNamespace(
+            ssh_host="gpu",
+            remote_home="/home/user",
+        )
+        require_project_mock.return_value = Path("/tmp/proj")
+        get_project_name_mock.return_value = "proj"
+        get_host_config_mock.return_value = SSHHost(
+            host="gpu",
+            hostname="gpu.example.com",
+            user="ubuntu",
+            port=22,
+            identity_file=None,
+        )
+        resolve_compose_file_mock.return_value = None
+
+        def sync_side_effect() -> None:
+            call_order.append("sync")
+
+        def resolve_service_side_effect(*args, **kwargs) -> str:
+            call_order.append("resolve_service")
+            return "notebook"
+
+        sync_mock.side_effect = sync_side_effect
+        resolve_service_name_mock.side_effect = resolve_service_side_effect
+
+        process_mock = Mock()
+        process_mock.stdout = iter([])
+        process_mock.wait.return_value = 0
+        popen_mock.return_value = process_mock
+
+        command(sync=True)
+
+        self.assertEqual(call_order[:2], ["sync", "resolve_service"])
+
 
 if __name__ == "__main__":
     unittest.main()

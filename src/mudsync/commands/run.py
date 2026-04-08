@@ -52,15 +52,16 @@ def command(
 
     remote_path = f"{app_config.remote_home}/{proj_name}"
     resolved_file = resolve_compose_file(project_root, compose_file)
+
+    if sync:
+        sync_cmd.command()
+
     resolved_service = resolve_service_name(
         ssh_info,
         remote_path,
         resolved_file,
         service,
     )
-
-    if sync:
-        sync_cmd.command()
 
     remote_cmd = build_remote_run_command(
         remote_path,
