@@ -255,7 +255,7 @@ class FileBrowser:
         lines.append(
             (
                 "class:info",
-                "up/down or j/k: move  right/l: enter dir  left/h: parent  space: toggle  enter: save  ctrl+c: cancel\n\n",
+                "up/down or j/k: move  right/l: enter dir  left/h: parent  space: toggle  enter: save  esc/q/ctrl+c: cancel\n\n",
             )
         )
 
@@ -425,6 +425,14 @@ def command():
     def _(event):
         event.app.exit(result="cancelled")
 
+    @kb.add("escape")
+    def _(event):
+        event.app.exit(result="cancelled")
+
+    @kb.add("q")
+    def _(event):
+        event.app.exit(result="cancelled")
+
     style = Style.from_dict(
         {
             "header": "bold #4fc3f7",
@@ -444,3 +452,5 @@ def command():
     result = app.run()
     if result == "saved":
         typer.echo(f"Sync rules saved. ({len(rules.excludes)} excludes)")
+    elif result == "cancelled":
+        typer.echo("Sync rules update cancelled.")

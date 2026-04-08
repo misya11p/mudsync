@@ -18,25 +18,29 @@
 
 ## Current status
 - 種別: instructions 完了
-- 受領指示: 「指示に従い、plan通りにcodingを完了しなさい」
+- 受領指示:
+  1. `config` で現在設定値をデフォルト値として表示
+  2. `config` のサーバー選択順を文字列順で固定
+  3. `config` と `manage` で終了導線を追加（会話中に Ctrl+C でも可）
 - 完了済み:
-  - `cli.py` から `build` サブコマンドを削除
-  - `run` に `--service`, `--build`, `--sync`, `--file` を追加し、`COMMAND` 必須化
-  - `compose.py` を新設し、compose ファイル探索 / service 自動解決 / SSH 実行共通化を実装
-  - `run.py` を `docker compose run --rm` ベースへ移行
-  - `jupyter.py` を `docker compose up` フォアグラウンド実行へ移行
-  - `jupyter.py` でログから token URL を検出し、Host/Port 差し替え表示を追加
-  - `jupyter.py` で Ctrl+C 時に `docker compose down` を実行する cleanup を追加
-  - `tests/` を新設し、`run` / `jupyter` 回帰テストを追加
-  - `--file` 未指定時は `docker compose` の既定探索に委譲するよう修正（`--file` を渡さない）
-  - 不要な `from __future__ import annotations` を関連ファイルから削除
-  - `run` が複数トークンのコマンド引数（例: `python eval.py --arg1 val1`）を受け取れるよう修正
-  - `--sync` 指定時は service 解決より先に同期を実行するよう順序を修正（`run` / `jupyter`）
-  - `run --build` が前置/後置どちらでも正しくCLIオプション解釈されることをテストで明示化
-  - Compose v2.5.0 互換のため、`run --build` は `compose build` 実行後に `compose run` する方式へ変更
+  - `src/mudsync/commands/config.py`
+    - サーバー一覧を `sorted()` で安定ソート
+    - 既存設定を読み込み、`ssh_host` と `remote_home` をプロンプトのデフォルトに反映
+    - `raise_keyboard_interrupt=False` により Ctrl+C 時は `Config cancelled.` で正常終了
+    - `global_excludes` を再設定時にも保持
+  - `src/mudsync/commands/manage.py`
+    - 操作ヘルプに `esc/q/ctrl+c: cancel` を追加
+    - `escape` / `q` キーで `cancelled` 終了できるよう追加
+    - キャンセル時に `Sync rules update cancelled.` を表示
+  - `tests/test_config.py` を追加
+    - ソート済み選択肢、既存値デフォルト反映、`global_excludes` 保持を検証
+    - キャンセル時に保存されないことを検証
+- 検証結果:
+  - `uv run python -m unittest discover -s tests`
+  - 19 tests passed
 - 現在作業中:
   - なし
 - 現在の課題:
-  - なし（現時点で既知のブロッカーなし）
+  - なし
 - 次のステップ:
   1. 追加要望待ち
