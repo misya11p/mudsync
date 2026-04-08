@@ -17,7 +17,7 @@
   - `tests/test_jupyter.py`: URL ヘルパー、`up/down` コマンド生成、Ctrl+C 時 cleanup
 
 ## Current status
-- 種別: instructions 実行中
+- 種別: instructions 完了
 - 受領指示: 「指示に従い、plan通りにcodingを完了しなさい」
 - 完了済み:
   - `cli.py` から `build` サブコマンドを削除
@@ -31,8 +31,8 @@
   - `--file` 未指定時は `docker compose` の既定探索に委譲するよう修正（`--file` を渡さない）
   - 不要な `from __future__ import annotations` を関連ファイルから削除
 - 現在作業中:
-  - CLI help 仕様確認（`mudsync --help`, `run --help`, `jupyter --help`）
+  - なし
 - 現在の課題:
   - なし（現時点で既知のブロッカーなし）
 - 次のステップ:
-  1. 追加要望があれば仕様に沿って対応
+  1. 追加要望待ち
