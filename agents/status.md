@@ -26,7 +26,7 @@
   - `src/mudsync/commands/config.py`
     - サーバー一覧を `sorted()` で安定ソート
     - 既存設定を読み込み、`ssh_host` と `remote_home` をプロンプトのデフォルトに反映
-    - `raise_keyboard_interrupt=False` により Ctrl+C 時は `Config cancelled.` で正常終了
+    - `mandatory=False` + キーバインドで `Esc` / `Ctrl+C` キャンセル時は `Config cancelled.` で正常終了
     - `global_excludes` を再設定時にも保持
   - `src/mudsync/commands/manage.py`
     - 操作ヘルプに `esc/q/ctrl+c: cancel` を追加

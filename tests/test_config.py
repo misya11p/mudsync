@@ -43,11 +43,15 @@ class ConfigCommandTestCase(unittest.TestCase):
             message="Select SSH host:",
             choices=["gpu-a", "gpu-b", "gpu-c"],
             default="gpu-c",
+            mandatory=False,
+            keybindings=config_cmd._CANCEL_KEYBINDINGS,
             raise_keyboard_interrupt=False,
         )
         inquirer_mock.text.assert_called_once_with(
             message="Remote home directory:",
             default="/home/ubuntu",
+            mandatory=False,
+            keybindings=config_cmd._CANCEL_KEYBINDINGS,
             raise_keyboard_interrupt=False,
         )
         save_config_mock.assert_called_once_with(

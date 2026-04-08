@@ -4,6 +4,12 @@ from mudsync.config import AppConfig, DEFAULT_GLOBAL_EXCLUDES, load_config, save
 from mudsync.ssh_config import list_hosts
 
 
+_CANCEL_KEYBINDINGS = {
+    "skip": [{"key": "escape"}, {"key": "c-c"}],
+    "interrupt": [{"key": "c-d"}],
+}
+
+
 def command():
     hosts = sorted(list_hosts())
     if not hosts:
@@ -21,6 +27,8 @@ def command():
         message="Select SSH host:",
         choices=hosts,
         default=default_host,
+        mandatory=False,
+        keybindings=_CANCEL_KEYBINDINGS,
         raise_keyboard_interrupt=False,
     ).execute()
     if ssh_host is None:
@@ -30,6 +38,8 @@ def command():
     remote_home = inquirer.text(
         message="Remote home directory:",
         default=default_remote_home,
+        mandatory=False,
+        keybindings=_CANCEL_KEYBINDINGS,
         raise_keyboard_interrupt=False,
     ).execute()
     if remote_home is None:
