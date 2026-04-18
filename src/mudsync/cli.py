@@ -7,6 +7,7 @@ from mudsync.commands import manage as manage_cmd
 from mudsync.commands import sync as sync_cmd
 from mudsync.commands import push as push_cmd
 from mudsync.commands import pull as pull_cmd
+from mudsync.commands import build as build_cmd
 from mudsync.commands import run as run_cmd
 
 
@@ -74,6 +75,25 @@ def pull(
 ):
     """Pull filtered files from GPU server to local project"""
     pull_cmd.command(patterns)
+
+
+@app.command()
+def build(
+    service: str | None = typer.Option(
+        None,
+        "--service",
+        "-s",
+        help="Compose service name (builds all if omitted)",
+    ),
+    compose_file: str | None = typer.Option(
+        None,
+        "--file",
+        "-f",
+        help="Compose file path",
+    ),
+):
+    """Build compose images on GPU server"""
+    build_cmd.command(service=service, compose_file=compose_file)
 
 
 @app.command(

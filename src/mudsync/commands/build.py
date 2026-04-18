@@ -1,59 +1,58 @@
+import shlex
 import subprocess
 
 import typer
 
-from mudsync.config import require_config
-from mudsync.project import get_project_name, require_project
+from mudsync.commands.compose import (
+    build_compose_base_args,
+    build_ssh_command,
+    resolve_compose_file,
+)
+from mudsync.project import require_project
+from mudsync.sync_rules import require_project_config
 from mudsync.ssh_config import get_host_config
 
 
-def build_container_name(ssh_user: str, remote_path: str, proj_name: str) -> str:
-    path_basename = remote_path.rstrip("/").split("/")[-1]
-    return f"{ssh_user}_{path_basename}_{proj_name}"
+def build_remote_build_command(
+    remote_path: str,
+    compose_file: str | None,
+    service: str | None,
+) -> str:
+    compose_args = build_compose_base_args(compose_file)
+    build_args = [*compose_args, "build"]
+    if service:
+        build_args.append(service)
+    quoted = [shlex.quote(part) for part in build_args]
+    command_parts = ["cd", shlex.quote(remote_path), "&&", *quoted]
+    return " ".join(command_parts)
 
 
-def command():
-    app_config = require_config()
+def command(
+    service: str | None = None,
+    compose_file: str | None = None,
+):
     project_root = require_project()
-    proj_name = get_project_name(project_root)
-    ssh_info = get_host_config(app_config.ssh_host)
+    project_config = require_project_config(project_root)
+    ssh_info = get_host_config(project_config.server)
 
-    dockerfile = project_root / "Dockerfile"
-    if not dockerfile.exists():
-        raise SystemExit(
-            f"Error: Dockerfile not found in {project_root}\n"
-            "Please create a Dockerfile before running build."
-        )
+    remote_path = project_config.remote_path
+    resolved_file = resolve_compose_file(project_root, compose_file)
 
-    container_name = build_container_name(
-        ssh_info.user, app_config.remote_path, proj_name
+    remote_cmd = build_remote_build_command(
+        remote_path,
+        resolved_file,
+        service,
     )
+    ssh_cmd = build_ssh_command(ssh_info, remote_cmd)
 
-    remote_path = f"{app_config.remote_path}/{proj_name}"
-
-    ssh_cmd = [
-        "ssh",
-    ]
-    if ssh_info.port != 22:
-        ssh_cmd.extend(["-p", str(ssh_info.port)])
-    if ssh_info.identity_file:
-        ssh_cmd.extend(["-i", ssh_info.identity_file])
-
-    ssh_cmd.append(f"{ssh_info.user}@{ssh_info.hostname}")
-
-    remote_cmd = f"cd {remote_path} && docker build -t {container_name} ."
-    ssh_cmd.append(remote_cmd)
-
-    typer.echo(f"Building Docker image on {ssh_info.hostname}...")
-    typer.echo(f"Container name: {container_name}")
-    typer.echo(f"Build context: {remote_path}")
+    target = service or "(all services)"
+    typer.echo(f"Building on {ssh_info.hostname}: {target}")
     typer.echo()
 
     try:
-        result = subprocess.run(ssh_cmd, check=True)
-        typer.echo()
-        typer.echo(f"Successfully built: {container_name}")
-    except subprocess.CalledProcessError as e:
-        raise SystemExit(f"Error: Docker build failed with exit code {e.returncode}")
-    except FileNotFoundError:
-        raise SystemExit("Error: ssh command not found")
+        result = subprocess.run(ssh_cmd, check=False)
+    except FileNotFoundError as exc:
+        raise SystemExit("Error: ssh command not found") from exc
+
+    if result.returncode != 0:
+        raise SystemExit(result.returncode)
