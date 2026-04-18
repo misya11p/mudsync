@@ -1,5 +1,6 @@
 import typer
-from mudsync.commands import config as config_cmd
+from mudsync.commands import default as default_cmd
+from mudsync.commands import init as init_cmd
 from mudsync.commands import show as show_cmd
 from mudsync.commands import connect as connect_cmd
 from mudsync.commands import manage as manage_cmd
@@ -16,9 +17,15 @@ app = typer.Typer(
 
 
 @app.command()
-def config():
-    """Configure GPU server connection settings"""
-    config_cmd.command()
+def default():
+    """Configure default GPU server connection settings"""
+    default_cmd.command()
+
+
+@app.command()
+def init():
+    """Initialize msync.json in the current project directory"""
+    init_cmd.command()
 
 
 @app.command()

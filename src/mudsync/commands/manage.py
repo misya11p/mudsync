@@ -10,9 +10,14 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 import typer
 
-from mudsync.config import load_config, DEFAULT_GLOBAL_EXCLUDES
 from mudsync.project import require_project
-from mudsync.sync_rules import SyncRules, load_rules, save_rules
+from mudsync.sync_rules import (
+    ProjectConfig,
+    DEFAULT_GLOBAL_EXCLUDES,
+    load_project_config,
+    require_project_config,
+    save_project_config,
+)
 
 
 def format_size(size_bytes: int) -> tuple[str, str]:
@@ -71,12 +76,11 @@ class FileBrowser:
     def __init__(
         self,
         project_root: Path,
-        rules: SyncRules,
+        project_config: ProjectConfig,
         app_ref: list,
-        global_excludes: list[str] | None = None,
     ):
         self.project_root = project_root
-        self.rules = rules
+        self.project_config = project_config
         self.current_dir = project_root
         self.cursor_index = 0
         self.cursor_positions: dict[Path, int] = {}
@@ -86,13 +90,12 @@ class FileBrowser:
         self.size_loading: set[Path] = set()
         self.size_lock = threading.Lock()
         self._app_ref = app_ref
-        self.global_excludes = global_excludes or []
         self.refresh_items()
         self._start_size_calculations()
 
     def _is_global_excluded(self, path: Path) -> bool:
         name = path.name
-        for pattern in self.global_excludes:
+        for pattern in DEFAULT_GLOBAL_EXCLUDES:
             base = pattern.rstrip("/")
             if name == base:
                 return True
@@ -159,9 +162,9 @@ class FileBrowser:
         if self._is_global_excluded(path):
             return True
         rs = _rel_str(path, self.project_root)
-        if rs in self.rules.excludes:
+        if rs in self.project_config.excludes:
             return True
-        for exc in self.rules.excludes:
+        for exc in self.project_config.excludes:
             if exc.endswith("/") and rs.startswith(exc):
                 return True
         return False
@@ -170,7 +173,7 @@ class FileBrowser:
         if self._is_global_excluded(path):
             return "__global__"
         rs = _rel_str(path, self.project_root)
-        for exc in self.rules.excludes:
+        for exc in self.project_config.excludes:
             if exc.endswith("/") and rs.startswith(exc):
                 return exc
         return None
@@ -204,49 +207,49 @@ class FileBrowser:
             state = self.get_dir_state(path)
             parent_exc = self._find_parent_exclusion(path)
             if state == "exclude":
-                if rs in self.rules.excludes:
-                    self.rules.excludes.remove(rs)
+                if rs in self.project_config.excludes:
+                    self.project_config.excludes.remove(rs)
                     for child in path.rglob("*"):
                         if self._is_global_excluded(child):
                             continue
                         crs = _rel_str(child, self.project_root)
-                        if crs in self.rules.excludes:
-                            self.rules.excludes.remove(crs)
+                        if crs in self.project_config.excludes:
+                            self.project_config.excludes.remove(crs)
                 elif parent_exc and parent_exc != "__global__":
-                    self.rules.excludes.remove(parent_exc)
+                    self.project_config.excludes.remove(parent_exc)
                     parent_dir = self.project_root / parent_exc.rstrip("/")
                     for sibling in parent_dir.iterdir():
                         if self._is_global_excluded(sibling) or sibling == path:
                             continue
                         crs = _rel_str(sibling, self.project_root)
-                        if crs not in self.rules.excludes:
-                            self.rules.excludes.append(crs)
+                        if crs not in self.project_config.excludes:
+                            self.project_config.excludes.append(crs)
             elif state == "half_include":
                 for child in path.rglob("*"):
                     if self._is_global_excluded(child):
                         continue
                     crs = _rel_str(child, self.project_root)
-                    if crs in self.rules.excludes:
-                        self.rules.excludes.remove(crs)
+                    if crs in self.project_config.excludes:
+                        self.project_config.excludes.remove(crs)
             else:
-                self.rules.excludes.append(rs)
+                self.project_config.excludes.append(rs)
         else:
             rs = _rel_str(path, self.project_root)
-            if rs in self.rules.excludes:
-                self.rules.excludes.remove(rs)
+            if rs in self.project_config.excludes:
+                self.project_config.excludes.remove(rs)
             elif parent_exc := self._find_parent_exclusion(path):
                 if parent_exc == "__global__":
                     return
-                self.rules.excludes.remove(parent_exc)
+                self.project_config.excludes.remove(parent_exc)
                 parent_dir = self.project_root / parent_exc.rstrip("/")
                 for sibling in parent_dir.iterdir():
                     if self._is_global_excluded(sibling) or sibling == path:
                         continue
                     crs = _rel_str(sibling, self.project_root)
-                    if crs not in self.rules.excludes:
-                        self.rules.excludes.append(crs)
+                    if crs not in self.project_config.excludes:
+                        self.project_config.excludes.append(crs)
             else:
-                self.rules.excludes.append(rs)
+                self.project_config.excludes.append(rs)
 
     def get_display_text(self):
         lines = []
@@ -325,11 +328,8 @@ class FileBrowser:
             self.toggle_exclude(self.items[self.cursor_index])
 
 
-def _compact_rules(
-    rules: SyncRules, project_root: Path, global_excludes: list[str] | None = None
-) -> SyncRules:
-    global_excludes = global_excludes or []
-    excludes = set(rules.excludes)
+def _compact_rules(config: ProjectConfig, project_root: Path) -> ProjectConfig:
+    excludes = set(config.excludes)
     to_remove = set()
     for exc in excludes:
         if exc.endswith("/"):
@@ -339,37 +339,37 @@ def _compact_rules(
                     if any(
                         child.name == p.rstrip("/")
                         or ("*" in p and fnmatch.fnmatch(child.name, p))
-                        for p in global_excludes
+                        for p in DEFAULT_GLOBAL_EXCLUDES
                     ):
                         continue
                     crs = _rel_str(child, project_root)
                     if crs in excludes:
                         to_remove.add(crs)
-    new_excludes = [e for e in rules.excludes if e not in to_remove]
-    return SyncRules(project_path=rules.project_path, excludes=new_excludes)
+    new_excludes = [e for e in config.excludes if e not in to_remove]
+    return ProjectConfig(
+        server=config.server,
+        remote_path=config.remote_path,
+        excludes=new_excludes,
+    )
 
 
 def command():
     project_root = require_project()
-    rules = load_rules(project_root)
-    app_config = load_config()
-    global_excludes = (
-        app_config.global_excludes if app_config else DEFAULT_GLOBAL_EXCLUDES
-    )
+    project_config = require_project_config(project_root)
 
     for item in project_root.iterdir():
         if item.is_file():
             size = get_file_size(item)
             if size > 10 * 1024 * 1024:
                 rs = _rel_str(item, project_root)
-                if rs not in rules.excludes:
-                    rules.excludes.append(rs)
+                if rs not in project_config.excludes:
+                    project_config.excludes.append(rs)
         elif item.is_dir():
             item_count = count_dir_items(item)
             if item_count > 100:
                 rs = _rel_str(item, project_root)
-                if rs not in rules.excludes:
-                    rules.excludes.append(rs)
+                if rs not in project_config.excludes:
+                    project_config.excludes.append(rs)
 
     app_ref = [None]
 
@@ -417,8 +417,8 @@ def command():
 
     @kb.add("enter")
     def _(event):
-        compacted = _compact_rules(rules, project_root, global_excludes)
-        save_rules(compacted)
+        compacted = _compact_rules(project_config, project_root)
+        save_project_config(project_root, compacted)
         event.app.exit(result="saved")
 
     @kb.add("c-c")
@@ -442,7 +442,7 @@ def command():
         }
     )
 
-    browser = FileBrowser(project_root, rules, app_ref, global_excludes=global_excludes)
+    browser = FileBrowser(project_root, project_config, app_ref)
 
     control = FormattedTextControl(get_display)
     layout = Layout(Window(content=control))
@@ -451,6 +451,6 @@ def command():
 
     result = app.run()
     if result == "saved":
-        typer.echo(f"Sync rules saved. ({len(rules.excludes)} excludes)")
+        typer.echo(f"Sync rules saved. ({len(project_config.excludes)} excludes)")
     elif result == "cancelled":
         typer.echo("Sync rules update cancelled.")

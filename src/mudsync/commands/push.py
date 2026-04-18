@@ -1,9 +1,9 @@
 import typer
 
 from mudsync.commands.sync import build_rsync_command, run_rsync
-from mudsync.config import require_config
-from mudsync.project import get_project_name, require_project
+from mudsync.project import require_project
 from mudsync.ssh_config import get_host_config
+from mudsync.sync_rules import require_project_config
 
 
 def build_filtered_transfer_options(patterns: list[str]) -> list[str]:
@@ -14,12 +14,11 @@ def build_filtered_transfer_options(patterns: list[str]) -> list[str]:
 
 
 def command(patterns: list[str]) -> None:
-    app_config = require_config()
     project_root = require_project()
-    proj_name = get_project_name(project_root)
-    ssh_info = get_host_config(app_config.ssh_host)
+    project_config = require_project_config(project_root)
+    ssh_info = get_host_config(project_config.server)
 
-    remote_path = f"{app_config.remote_home}/{proj_name}"
+    remote_path = project_config.remote_path
     source = f"{project_root}/"
     destination = f"{ssh_info.user}@{ssh_info.hostname}:{remote_path}/"
 

@@ -8,20 +8,16 @@ def find_project_root(start: Optional[Path] = None) -> Path:
 
     current = start.resolve()
     while True:
-        if (current / ".git").exists():
+        if (current / "msync.json").exists():
             return current
 
         parent = current.parent
         if parent == current:
             raise SystemExit(
-                "Error: Not a git repository (or any of the parent directories).\n"
-                "Run this command from within a git project."
+                "Error: msync.json not found in current or parent directories.\n"
+                "Run 'msync init' first."
             )
         current = parent
-
-
-def get_project_name(project_root: Path) -> str:
-    return project_root.name
 
 
 def require_project() -> Path:

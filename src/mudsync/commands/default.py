@@ -1,6 +1,6 @@
 import typer
 from InquirerPy import inquirer
-from mudsync.config import AppConfig, DEFAULT_GLOBAL_EXCLUDES, load_config, save_config
+from mudsync.config import AppConfig, load_config, save_config
 from mudsync.ssh_config import list_hosts
 
 
@@ -21,7 +21,7 @@ def command():
         if current_config and current_config.ssh_host in hosts
         else hosts[0]
     )
-    default_remote_home = current_config.remote_home if current_config else "/home"
+    default_remote_path = current_config.remote_path if current_config else "/home"
 
     ssh_host = inquirer.select(
         message="Select SSH host:",
@@ -35,26 +35,21 @@ def command():
         typer.echo("Config cancelled.")
         raise typer.Exit(code=0)
 
-    remote_home = inquirer.text(
-        message="Remote home directory:",
-        default=default_remote_home,
+    remote_path = inquirer.text(
+        message="Remote path:",
+        default=default_remote_path,
         mandatory=False,
         keybindings=_CANCEL_KEYBINDINGS,
         raise_keyboard_interrupt=False,
     ).execute()
-    if remote_home is None:
+    if remote_path is None:
         typer.echo("Config cancelled.")
         raise typer.Exit(code=0)
 
     config = AppConfig(
         ssh_host=ssh_host,
-        remote_home=remote_home,
-        global_excludes=(
-            list(current_config.global_excludes)
-            if current_config
-            else list(DEFAULT_GLOBAL_EXCLUDES)
-        ),
+        remote_path=remote_path,
     )
     save_config(config)
 
-    typer.echo(f"Config saved: {ssh_host} -> {remote_home}")
+    typer.echo(f"Default config saved: {ssh_host} -> {remote_path}")

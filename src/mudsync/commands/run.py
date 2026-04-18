@@ -10,9 +10,9 @@ from mudsync.commands.compose import (
     resolve_compose_file,
     resolve_service_name,
 )
-from mudsync.config import require_config
-from mudsync.project import get_project_name, require_project
+from mudsync.project import require_project
 from mudsync.ssh_config import get_host_config
+from mudsync.sync_rules import require_project_config
 
 
 def build_remote_run_command(
@@ -85,12 +85,11 @@ def command(
 ):
     command_parts = list(cmd or [])
 
-    app_config = require_config()
     project_root = require_project()
-    proj_name = get_project_name(project_root)
-    ssh_info = get_host_config(app_config.ssh_host)
+    project_config = require_project_config(project_root)
+    ssh_info = get_host_config(project_config.server)
 
-    remote_path = f"{app_config.remote_home}/{proj_name}"
+    remote_path = project_config.remote_path
     resolved_file = resolve_compose_file(project_root, compose_file)
 
     if sync:

@@ -4,11 +4,10 @@ from pathlib import Path
 
 import typer
 
-from mudsync.config import require_config
-from mudsync.project import get_project_name, require_project
+from mudsync.project import require_project
 from mudsync.ssh_config import SSHHost
 from mudsync.ssh_config import get_host_config
-from mudsync.sync_rules import get_excludes
+from mudsync.sync_rules import get_excludes, require_project_config
 
 
 def build_rsync_ssh_option(ssh_info: SSHHost) -> str:
@@ -47,14 +46,13 @@ def run_rsync(rsync_cmd: list[str]) -> None:
 
 
 def command():
-    app_config = require_config()
     project_root = require_project()
-    proj_name = get_project_name(project_root)
-    ssh_info = get_host_config(app_config.ssh_host)
+    project_config = require_project_config(project_root)
+    ssh_info = get_host_config(project_config.server)
 
-    remote_path = f"{app_config.remote_home}/{proj_name}"
+    remote_path = project_config.remote_path
 
-    excludes = get_excludes(project_root, app_config.global_excludes)
+    excludes = get_excludes(project_root)
     exclude_lines = list(excludes)
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:

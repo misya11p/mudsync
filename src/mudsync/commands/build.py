@@ -7,9 +7,9 @@ from mudsync.project import get_project_name, require_project
 from mudsync.ssh_config import get_host_config
 
 
-def build_container_name(ssh_user: str, remote_home: str, proj_name: str) -> str:
-    home_basename = remote_home.rstrip("/").split("/")[-1]
-    return f"{ssh_user}_{home_basename}_{proj_name}"
+def build_container_name(ssh_user: str, remote_path: str, proj_name: str) -> str:
+    path_basename = remote_path.rstrip("/").split("/")[-1]
+    return f"{ssh_user}_{path_basename}_{proj_name}"
 
 
 def command():
@@ -26,10 +26,10 @@ def command():
         )
 
     container_name = build_container_name(
-        ssh_info.user, app_config.remote_home, proj_name
+        ssh_info.user, app_config.remote_path, proj_name
     )
 
-    remote_path = f"{app_config.remote_home}/{proj_name}"
+    remote_path = f"{app_config.remote_path}/{proj_name}"
 
     ssh_cmd = [
         "ssh",

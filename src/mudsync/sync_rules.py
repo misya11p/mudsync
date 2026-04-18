@@ -1,57 +1,66 @@
-import hashlib
 import json
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 
+DEFAULT_GLOBAL_EXCLUDES = [
+    ".git/",
+    "__pycache__/",
+    ".venv/",
+    "node_modules/",
+    ".ipynb_checkpoints/",
+    ".DS_Store",
+    "*.pyc",
+    "*.pyo",
+]
+
+
 @dataclass
-class SyncRules:
-    project_path: str
+class ProjectConfig:
+    server: str
+    remote_path: str
     excludes: list[str] = field(default_factory=list)
 
 
-def get_state_dir() -> Path:
-    state_home = Path(
-        os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state")
-    )
-    return state_home / "mudsync" / "sync_rules"
+def _msync_json_path(project_root: Path) -> Path:
+    return project_root / "msync.json"
 
 
-def project_hash(project_path: Path) -> str:
-    return hashlib.sha256(str(project_path.resolve()).encode()).hexdigest()[:16]
+def load_project_config(project_root: Path) -> Optional[ProjectConfig]:
+    path = _msync_json_path(project_root)
+    if not path.exists():
+        return None
+    data = json.loads(path.read_text())
+    return ProjectConfig(**data)
 
 
-def load_rules(project_root: Path) -> SyncRules:
-    state_path = get_state_dir() / f"{project_hash(project_root)}.json"
-    if not state_path.exists():
-        return SyncRules(project_path=str(project_root.resolve()))
-    data = json.loads(state_path.read_text())
-    return SyncRules(**data)
-
-
-def save_rules(rules: SyncRules) -> None:
-    state_path = get_state_dir() / f"{project_hash(Path(rules.project_path))}.json"
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(
+def save_project_config(project_root: Path, config: ProjectConfig) -> None:
+    path = _msync_json_path(project_root)
+    path.write_text(
         json.dumps(
             {
-                "project_path": rules.project_path,
-                "excludes": rules.excludes,
+                "server": config.server,
+                "remote_path": config.remote_path,
+                "excludes": config.excludes,
             },
             indent=2,
         )
+        + "\n"
     )
 
 
-def get_excludes(
-    project_root: Path, global_excludes: list[str] | None = None
-) -> list[str]:
-    rules = load_rules(project_root)
-    excludes = list(rules.excludes)
-    if global_excludes:
-        for pattern in global_excludes:
-            if pattern not in excludes:
-                excludes.append(pattern)
+def require_project_config(project_root: Path) -> ProjectConfig:
+    config = load_project_config(project_root)
+    if config is None:
+        raise SystemExit("Error: msync.json not found. Run 'msync init' first.")
+    return config
+
+
+def get_excludes(project_root: Path) -> list[str]:
+    config = load_project_config(project_root)
+    excludes = list(config.excludes) if config else []
+    for pattern in DEFAULT_GLOBAL_EXCLUDES:
+        if pattern not in excludes:
+            excludes.append(pattern)
     return excludes
