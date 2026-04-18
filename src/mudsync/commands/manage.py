@@ -158,7 +158,29 @@ class FileBrowser:
         t = threading.Thread(target=worker, daemon=True)
         t.start()
 
+    def is_data_included(self, path: Path) -> bool:
+        if self._is_global_excluded(path):
+            return False
+        rs = _rel_str(path, self.project_root)
+        if rs in self.project_config.data_includes:
+            return True
+        for di in self.project_config.data_includes:
+            if di.endswith("/") and rs.startswith(di):
+                return True
+        return False
+
+    def _find_parent_data_inclusion(self, path: Path) -> str | None:
+        if self._is_global_excluded(path):
+            return None
+        rs = _rel_str(path, self.project_root)
+        for di in self.project_config.data_includes:
+            if di.endswith("/") and rs.startswith(di):
+                return di
+        return None
+
     def is_excluded(self, path: Path) -> bool:
+        if self.is_data_included(path):
+            return False
         if self._is_global_excluded(path):
             return True
         rs = _rel_str(path, self.project_root)
@@ -178,7 +200,16 @@ class FileBrowser:
                 return exc
         return None
 
+    def get_item_state(self, path: Path) -> str:
+        if self.is_data_included(path):
+            return "data"
+        if self.is_excluded(path):
+            return "exclude"
+        return "include"
+
     def get_dir_state(self, path: Path) -> str:
+        if self.is_data_included(path):
+            return "data"
         if self.is_excluded(path):
             return "exclude"
         try:
@@ -187,21 +218,28 @@ class FileBrowser:
             return "include"
         if not children:
             return "include"
-        all_excluded = all(self.is_excluded(c) for c in children)
-        if all_excluded:
+        child_states = set()
+        for c in children:
+            if c.is_dir():
+                child_states.add(self.get_dir_state(c))
+            else:
+                child_states.add(self.get_item_state(c))
+        if child_states == {"exclude"}:
             return "exclude"
-        any_half_or_excluded = any(
-            self.is_excluded(c)
-            or (c.is_dir() and self.get_dir_state(c) == "half_include")
-            for c in children
-        )
-        if any_half_or_excluded:
-            return "half_include"
-        return "include"
+        if child_states == {"data"}:
+            return "data"
+        all_included_or_data = all(s in ("include", "data") for s in child_states)
+        if all_included_or_data and "data" not in child_states:
+            return "include"
+        if all_included_or_data and "data" in child_states:
+            return "half_data"
+        return "half_include"
 
     def toggle_exclude(self, path: Path):
         if self._is_global_excluded(path):
             return
+        if self.is_data_included(path):
+            self._remove_data_inclusion(path)
         if path.is_dir():
             rs = _rel_str(path, self.project_root)
             state = self.get_dir_state(path)
@@ -251,6 +289,66 @@ class FileBrowser:
             else:
                 self.project_config.excludes.append(rs)
 
+    def _remove_data_inclusion(self, path: Path):
+        rs = _rel_str(path, self.project_root)
+        if rs in self.project_config.data_includes:
+            self.project_config.data_includes.remove(rs)
+        else:
+            parent_di = self._find_parent_data_inclusion(path)
+            if parent_di:
+                self.project_config.data_includes.remove(parent_di)
+                parent_dir = self.project_root / parent_di.rstrip("/")
+                for sibling in parent_dir.iterdir():
+                    if self._is_global_excluded(sibling) or sibling == path:
+                        continue
+                    srs = _rel_str(sibling, self.project_root)
+                    if srs not in self.project_config.data_includes:
+                        self.project_config.data_includes.append(srs)
+        if path.is_dir():
+            for child in path.rglob("*"):
+                if self._is_global_excluded(child):
+                    continue
+                crs = _rel_str(child, self.project_root)
+                if crs in self.project_config.data_includes:
+                    self.project_config.data_includes.remove(crs)
+
+    def toggle_data(self, path: Path):
+        if self._is_global_excluded(path):
+            return
+        rs = _rel_str(path, self.project_root)
+        if self.is_data_included(path):
+            self._remove_data_inclusion(path)
+        else:
+            if self.is_excluded(path):
+                if rs in self.project_config.excludes:
+                    self.project_config.excludes.remove(rs)
+                else:
+                    parent_exc = self._find_parent_exclusion(path)
+                    if parent_exc and parent_exc != "__global__":
+                        self.project_config.excludes.remove(parent_exc)
+                        parent_dir = self.project_root / parent_exc.rstrip("/")
+                        for sibling in parent_dir.iterdir():
+                            if self._is_global_excluded(sibling) or sibling == path:
+                                continue
+                            srs = _rel_str(sibling, self.project_root)
+                            if srs not in self.project_config.excludes:
+                                self.project_config.excludes.append(srs)
+                if path.is_dir():
+                    for child in path.rglob("*"):
+                        if self._is_global_excluded(child):
+                            continue
+                        crs = _rel_str(child, self.project_root)
+                        if crs in self.project_config.excludes:
+                            self.project_config.excludes.remove(crs)
+            self.project_config.data_includes.append(rs)
+            if path.is_dir():
+                for child in path.rglob("*"):
+                    if self._is_global_excluded(child):
+                        continue
+                    crs = _rel_str(child, self.project_root)
+                    if crs in self.project_config.data_includes:
+                        self.project_config.data_includes.remove(crs)
+
     def get_display_text(self):
         lines = []
         rel_current = self.current_dir.relative_to(self.project_root)
@@ -258,7 +356,7 @@ class FileBrowser:
         lines.append(
             (
                 "class:info",
-                "up/down or j/k: move  right/l: enter dir  left/h: parent  space: toggle  enter: save  esc/q/ctrl+c: cancel\n\n",
+                "up/down or j/k: move  right/l: enter dir  left/h: parent  space: toggle sync  d: toggle data  enter: save  esc/q/ctrl+c: cancel\n\n",
             )
         )
 
@@ -271,17 +369,26 @@ class FileBrowser:
                 if state == "exclude":
                     display_name = name
                     style_class = "class:excluded"
+                elif state == "data":
+                    display_name = name + "*"
+                    style_class = "class:data"
                 elif state == "include":
                     display_name = name + "*"
                     style_class = "class:included"
+                elif state == "half_data":
+                    display_name = name
+                    style_class = "class:data"
                 else:
                     display_name = name
                     style_class = "class:included"
             else:
-                is_excluded = self.is_excluded(item)
-                if is_excluded:
+                state = self.get_item_state(item)
+                if state == "exclude":
                     display_name = name
                     style_class = "class:excluded"
+                elif state == "data":
+                    display_name = name
+                    style_class = "class:data"
                 else:
                     display_name = name
                     style_class = "class:included"
@@ -327,6 +434,10 @@ class FileBrowser:
         if self.items:
             self.toggle_exclude(self.items[self.cursor_index])
 
+    def toggle_data_item(self):
+        if self.items:
+            self.toggle_data(self.items[self.cursor_index])
+
 
 def _compact_rules(config: ProjectConfig, project_root: Path) -> ProjectConfig:
     excludes = set(config.excludes)
@@ -346,10 +457,31 @@ def _compact_rules(config: ProjectConfig, project_root: Path) -> ProjectConfig:
                     if crs in excludes:
                         to_remove.add(crs)
     new_excludes = [e for e in config.excludes if e not in to_remove]
+
+    data_includes = set(config.data_includes)
+    to_remove_data = set()
+    for di in data_includes:
+        if di.endswith("/"):
+            dir_path = project_root / di.rstrip("/")
+            if dir_path.is_dir():
+                for child in dir_path.iterdir():
+                    if any(
+                        child.name == p.rstrip("/")
+                        or ("*" in p and fnmatch.fnmatch(child.name, p))
+                        for p in DEFAULT_GLOBAL_EXCLUDES
+                    ):
+                        continue
+                    crs = _rel_str(child, project_root)
+                    if crs in data_includes:
+                        to_remove_data.add(crs)
+    new_data_includes = [d for d in config.data_includes if d not in to_remove_data]
+
     return ProjectConfig(
         server=config.server,
         remote_path=config.remote_path,
         excludes=new_excludes,
+        data_dir=config.data_dir,
+        data_includes=new_data_includes,
     )
 
 
@@ -415,6 +547,11 @@ def command():
         browser.toggle()
         event.app.invalidate()
 
+    @kb.add("d")
+    def _(event):
+        browser.toggle_data_item()
+        event.app.invalidate()
+
     @kb.add("enter")
     def _(event):
         compacted = _compact_rules(project_config, project_root)
@@ -439,6 +576,7 @@ def command():
             "info": "#888888",
             "excluded": "#888888",
             "included": "#4caf50",
+            "data": "#ff9800",
         }
     )
 
@@ -451,6 +589,8 @@ def command():
 
     result = app.run()
     if result == "saved":
-        typer.echo(f"Sync rules saved. ({len(project_config.excludes)} excludes)")
+        typer.echo(
+            f"Sync rules saved. ({len(project_config.excludes)} excludes, {len(project_config.data_includes)} data)"
+        )
     elif result == "cancelled":
         typer.echo("Sync rules update cancelled.")

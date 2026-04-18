@@ -12,6 +12,16 @@ def command(patterns: list[str]) -> None:
     project_config = require_project_config(project_root)
     ssh_info = get_host_config(project_config.server)
 
+    data_includes = project_config.data_includes
+    conflicting = [
+        p for p in patterns if p in data_includes or p.rstrip("/") in data_includes
+    ]
+    if conflicting:
+        raise SystemExit(
+            f"Error: Cannot pull data directory items via symlink: {', '.join(conflicting)}\n"
+            "Data directory items are stored as symlinks on the remote and cannot be pulled."
+        )
+
     remote_path = project_config.remote_path
     source = f"{ssh_info.user}@{ssh_info.hostname}:{remote_path}/"
     destination = f"{project_root}/"

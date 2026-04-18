@@ -1,9 +1,11 @@
+import shlex
 import subprocess
 import tempfile
 from pathlib import Path
 
 import typer
 
+from mudsync.commands.compose import build_ssh_command
 from mudsync.project import require_project
 from mudsync.ssh_config import SSHHost
 from mudsync.ssh_config import get_host_config
@@ -45,15 +47,29 @@ def run_rsync(rsync_cmd: list[str]) -> None:
         ) from exc
 
 
+def run_ssh_command(ssh_info: SSHHost, remote_command: str) -> None:
+    ssh_cmd = build_ssh_command(ssh_info, remote_command)
+    try:
+        subprocess.run(ssh_cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        raise SystemExit(
+            f"Error: SSH command failed with exit code {e.returncode}"
+        ) from e
+    except FileNotFoundError as exc:
+        raise SystemExit("Error: ssh command not found") from exc
+
+
 def command():
     project_root = require_project()
     project_config = require_project_config(project_root)
     ssh_info = get_host_config(project_config.server)
 
     remote_path = project_config.remote_path
+    data_dir = project_config.data_dir
+    data_includes = project_config.data_includes
 
     excludes = get_excludes(project_root)
-    exclude_lines = list(excludes)
+    exclude_lines = list(excludes) + data_includes
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
         f.write("\n".join(exclude_lines) + "\n")
@@ -70,13 +86,45 @@ def command():
         f"Syncing {project_root} -> {ssh_info.user}@{ssh_info.hostname}:{remote_path}/"
     )
     typer.echo(f"Excludes: {len(exclude_lines)} rules")
-    typer.echo()
 
     try:
         run_rsync(rsync_cmd)
-        typer.echo()
-        typer.echo("Sync completed successfully.")
     finally:
         import os
 
         os.unlink(exclude_file)
+
+    if data_dir and data_includes:
+        typer.echo()
+        typer.echo(f"Syncing {len(data_includes)} data items to {data_dir}")
+
+        run_ssh_command(ssh_info, f"mkdir -p {shlex.quote(data_dir)}")
+
+        data_options = ["--prune-empty-dirs", "--include=*/"]
+        data_options.extend(f"--include={pattern}" for pattern in data_includes)
+        data_options.append("--exclude=*")
+
+        data_rsync_cmd = build_rsync_command(
+            source=f"{project_root}/",
+            destination=f"{ssh_info.user}@{ssh_info.hostname}:{data_dir}/",
+            ssh_info=ssh_info,
+            options=data_options,
+        )
+
+        run_rsync(data_rsync_cmd)
+
+        symlink_parts = []
+        for entry in data_includes:
+            entry_name = entry.rstrip("/")
+            symlink_parts.append(f"rm -rf {shlex.quote(f'{remote_path}/{entry_name}')}")
+            symlink_parts.append(
+                f"ln -s {shlex.quote(f'{data_dir}/{entry_name}')} {shlex.quote(f'{remote_path}/{entry_name}')}"
+            )
+
+        if symlink_parts:
+            remote_command = " && ".join(symlink_parts)
+            run_ssh_command(ssh_info, remote_command)
+            typer.echo(f"Created {len(data_includes)} data symlinks")
+
+    typer.echo()
+    typer.echo("Sync completed successfully.")

@@ -21,6 +21,8 @@ class ProjectConfig:
     server: str
     remote_path: str
     excludes: list[str] = field(default_factory=list)
+    data_dir: str | None = None
+    data_includes: list[str] = field(default_factory=list)
 
 
 def _msync_json_path(project_root: Path) -> Path:
@@ -32,6 +34,8 @@ def load_project_config(project_root: Path) -> Optional[ProjectConfig]:
     if not path.exists():
         return None
     data = json.loads(path.read_text())
+    data.setdefault("data_dir", None)
+    data.setdefault("data_includes", [])
     return ProjectConfig(**data)
 
 
@@ -43,6 +47,8 @@ def save_project_config(project_root: Path, config: ProjectConfig) -> None:
                 "server": config.server,
                 "remote_path": config.remote_path,
                 "excludes": config.excludes,
+                "data_dir": config.data_dir,
+                "data_includes": config.data_includes,
             },
             indent=2,
         )

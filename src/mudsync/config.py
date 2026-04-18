@@ -9,6 +9,7 @@ from typing import Optional
 class AppConfig:
     ssh_host: str
     remote_path: str
+    data_dir: str | None = None
 
 
 def get_config_dir() -> Path:
@@ -25,6 +26,7 @@ def load_config() -> Optional[AppConfig]:
         data["remote_path"] = data.pop("remote_home")
     if "global_excludes" in data:
         del data["global_excludes"]
+    data.setdefault("data_dir", None)
     return AppConfig(**data)
 
 
