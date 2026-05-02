@@ -15,7 +15,7 @@ def find_project_root(start: Optional[Path] = None) -> Path:
         if parent == current:
             raise SystemExit(
                 "Error: msync.json not found in current or parent directories.\n"
-                "Run 'msync init' first."
+                "Run 'msync set' first."
             )
         current = parent
 

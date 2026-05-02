@@ -17,7 +17,6 @@ _CANCEL_KEYBINDINGS = {
 def command():
     project_root = Path.cwd()
     project_name = project_root.name
-    msync_json = project_root / "msync.json"
 
     existing_config = load_project_config(project_root)
 
@@ -56,7 +55,7 @@ def command():
         raise_keyboard_interrupt=False,
     ).execute()
     if ssh_host is None:
-        typer.echo("Init cancelled.")
+        typer.echo("Set cancelled.")
         raise typer.Exit(code=0)
 
     remote_path = inquirer.text(
@@ -67,7 +66,7 @@ def command():
         raise_keyboard_interrupt=False,
     ).execute()
     if remote_path is None:
-        typer.echo("Init cancelled.")
+        typer.echo("Set cancelled.")
         raise typer.Exit(code=0)
 
     data_dir = inquirer.text(
@@ -91,6 +90,6 @@ def command():
     )
     save_project_config(project_root, project_config)
 
-    typer.echo(f"Initialized msync.json: {ssh_host} -> {remote_path}")
+    typer.echo(f"Configured msync.json: {ssh_host} -> {remote_path}")
     if data_dir:
         typer.echo(f"  Data directory: {data_dir}")

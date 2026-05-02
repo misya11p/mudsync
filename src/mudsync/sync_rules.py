@@ -59,7 +59,7 @@ def save_project_config(project_root: Path, config: ProjectConfig) -> None:
 def require_project_config(project_root: Path) -> ProjectConfig:
     config = load_project_config(project_root)
     if config is None:
-        raise SystemExit("Error: msync.json not found. Run 'msync init' first.")
+        raise SystemExit("Error: msync.json not found. Run 'msync set' first.")
     return config
 
 

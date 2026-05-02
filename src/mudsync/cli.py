@@ -1,7 +1,7 @@
 import typer
 from mudsync.commands import default as default_cmd
-from mudsync.commands import init as init_cmd
-from mudsync.commands import show as show_cmd
+from mudsync.commands import set as set_cmd
+from mudsync.commands import info as info_cmd
 from mudsync.commands import connect as connect_cmd
 from mudsync.commands import manage as manage_cmd
 from mudsync.commands import sync as sync_cmd
@@ -24,16 +24,16 @@ def default():
     default_cmd.command()
 
 
-@app.command()
-def init():
-    """Initialize msync.json in the current project directory"""
-    init_cmd.command()
+@app.command(name="set")
+def set_():
+    """Configure msync.json in the current project directory"""
+    set_cmd.command()
 
 
 @app.command()
 def info():
     """Show current SSH connection settings"""
-    show_cmd.command()
+    info_cmd.command()
 
 
 @app.command()
@@ -140,7 +140,10 @@ def run(
     service: str | None = typer.Option(
         None,
         "--service", "-s",
-        help="Compose service name",
+        help=(
+            "Compose service name. If omitted, the first service in "
+            "the compose file will be used"
+        ),
     ),
     build: bool = typer.Option(
         False,
