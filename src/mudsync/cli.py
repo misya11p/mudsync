@@ -150,7 +150,7 @@ def run(
         help="Assign a container name",
     ),
 ):
-    """Run a command in a compose service on GPU server"""
+    """Run a command in a compose service, or start service if no command given"""
     command_parts = [*(cmd or []), *ctx.args]
     run_cmd.command(
         cmd=command_parts,

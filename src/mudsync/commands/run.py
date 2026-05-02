@@ -15,6 +15,26 @@ from mudsync.ssh_config import get_host_config
 from mudsync.sync_rules import require_project_config
 
 
+def build_remote_up_command(
+    remote_path: str,
+    compose_file: str | None,
+    service: str,
+    build: bool,
+    detach: bool,
+) -> str:
+    compose_args = build_compose_base_args(compose_file)
+    up_args = [*compose_args, "up"]
+    if build:
+        up_args.append("--build")
+    if detach:
+        up_args.append("--detach")
+    up_args.append(service)
+
+    quoted = [shlex.quote(part) for part in up_args]
+    command_parts = ["cd", shlex.quote(remote_path), "&&", *quoted]
+    return " ".join(command_parts)
+
+
 def build_remote_run_command(
     remote_path: str,
     compose_file: str | None,
@@ -25,7 +45,7 @@ def build_remote_run_command(
     name: str | None,
 ) -> str:
     compose_args = build_compose_base_args(compose_file)
-    run_args = [*compose_args, "run"]
+    run_args = [*compose_args, "run", "--service-ports"]
     if not no_rm:
         run_args.append("--rm")
     if detach:
@@ -51,7 +71,7 @@ def build_remote_build_then_run_command(
 ) -> str:
     compose_args = build_compose_base_args(compose_file)
     build_args = [*compose_args, "build", service]
-    run_args = [*compose_args, "run"]
+    run_args = [*compose_args, "run", "--service-ports"]
     if not no_rm:
         run_args.append("--rm")
     if detach:
@@ -102,7 +122,17 @@ def command(
         service,
     )
 
-    if build:
+    if not command_parts:
+        remote_cmd = build_remote_up_command(
+            remote_path,
+            resolved_file,
+            resolved_service,
+            build,
+            detach,
+        )
+        ssh_cmd = build_ssh_command(ssh_info, remote_cmd)
+        typer.echo(f"Starting on {ssh_info.hostname}: {resolved_service}")
+    elif build:
         remote_cmd = build_remote_build_then_run_command(
             remote_path,
             resolved_file,
@@ -112,6 +142,9 @@ def command(
             detach,
             name,
         )
+        ssh_cmd = build_ssh_command(ssh_info, remote_cmd)
+        display_command = " ".join(shlex.quote(part) for part in command_parts)
+        typer.echo(f"Running on {ssh_info.hostname}: {display_command}")
     else:
         remote_cmd = build_remote_run_command(
             remote_path,
@@ -122,13 +155,9 @@ def command(
             detach,
             name,
         )
-    ssh_cmd = build_ssh_command(ssh_info, remote_cmd)
-
-    if command_parts:
+        ssh_cmd = build_ssh_command(ssh_info, remote_cmd)
         display_command = " ".join(shlex.quote(part) for part in command_parts)
-    else:
-        display_command = "(service default command)"
-    typer.echo(f"Running on {ssh_info.hostname}: {display_command}")
+        typer.echo(f"Running on {ssh_info.hostname}: {display_command}")
     typer.echo()
 
     try:
