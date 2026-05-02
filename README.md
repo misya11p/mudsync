@@ -79,7 +79,7 @@ msync run
 msync run python train.py --epochs 10
 ```
 
-この場合、`python train.py`がコンテナ内で実行されます。実際の`docker compose run`と同様、最初に見つかった位置引数以降が全てコンテナに渡されます。
+この場合、`python train.py --epochs 10`がコンテナ内で実行されます。実際の`docker compose run`と同様、最初に見つかった位置引数以降が全てコンテナに渡されます。
 
 その他オプションはhelpを参照してください。
 
