@@ -100,7 +100,8 @@ def build(
     context_settings={
         "allow_extra_args": True,
         "ignore_unknown_options": True,
-    }
+        "allow_interspersed_args": False,
+    },
 )
 def run(
     ctx: typer.Context,
@@ -111,26 +112,22 @@ def run(
     ),
     service: str | None = typer.Option(
         None,
-        "--service",
-        "-s",
+        "--service", "-s",
         help="Compose service name",
     ),
     build: bool = typer.Option(
         False,
-        "--build",
-        "-b",
+        "--build", "-b",
         help="Build images before run",
     ),
     sync: bool = typer.Option(
         False,
-        "--sync",
-        "-y",
+        "--sync", "-y",
         help="Run sync before command",
     ),
     compose_file: str | None = typer.Option(
         None,
-        "--file",
-        "-f",
+        "--file", "-f",
         help="Compose file path",
     ),
     no_rm: bool = typer.Option(
@@ -140,13 +137,12 @@ def run(
     ),
     detach: bool = typer.Option(
         False,
-        "--detach",
-        "-d",
+        "--detach", "-d",
         help="Run container in background",
     ),
     name: str | None = typer.Option(
         None,
-        "--name",
+        "--name", "-n",
         help="Assign a container name",
     ),
 ):
