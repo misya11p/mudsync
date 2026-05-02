@@ -13,7 +13,7 @@ def build_filtered_transfer_options(patterns: list[str]) -> list[str]:
     return options
 
 
-def command(patterns: list[str]) -> None:
+def command(patterns: list[str], verbose: bool = False) -> None:
     project_root = require_project()
     project_config = require_project_config(project_root)
     ssh_info = get_host_config(project_config.server)
@@ -33,7 +33,7 @@ def command(patterns: list[str]) -> None:
     typer.echo(f"Patterns: {len(patterns)}")
     typer.echo()
 
-    run_rsync(rsync_cmd)
+    run_rsync(rsync_cmd, verbose=verbose)
 
     typer.echo()
     typer.echo("Push completed successfully.")

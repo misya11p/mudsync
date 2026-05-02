@@ -102,6 +102,7 @@ def command(
     no_rm: bool = False,
     detach: bool = False,
     name: str | None = None,
+    verbose: bool = False,
 ):
     command_parts = list(cmd or [])
 
@@ -113,7 +114,7 @@ def command(
     resolved_file = resolve_compose_file(project_root, compose_file)
 
     if sync:
-        sync_cmd.command()
+        sync_cmd.command(verbose=verbose)
 
     resolved_service = resolve_service_name(
         ssh_info,
@@ -159,6 +160,10 @@ def command(
         display_command = " ".join(shlex.quote(part) for part in command_parts)
         typer.echo(f"Running on {ssh_info.hostname}: {display_command}")
     typer.echo()
+
+    if verbose:
+        typer.echo(f"$ {shlex.join(ssh_cmd)}")
+        typer.echo()
 
     try:
         result = subprocess.run(ssh_cmd, check=False)

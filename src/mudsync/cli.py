@@ -37,9 +37,15 @@ def info():
 
 
 @app.command()
-def connect():
+def connect(
+    verbose: bool = typer.Option(
+        False,
+        "--verbose", "-v",
+        help="Show all subprocess commands before executing",
+    ),
+):
     """SSH connect to GPU server and cd to project directory"""
-    connect_cmd.command()
+    connect_cmd.command(verbose=verbose)
 
 
 @app.command()
@@ -49,9 +55,15 @@ def manage():
 
 
 @app.command()
-def sync():
+def sync(
+    verbose: bool = typer.Option(
+        False,
+        "--verbose", "-v",
+        help="Show all subprocess commands before executing",
+    ),
+):
     """Sync local project to GPU server via rsync"""
-    sync_cmd.command()
+    sync_cmd.command(verbose=verbose)
 
 
 @app.command()
@@ -61,9 +73,14 @@ def push(
         metavar="PATTERN [PATTERN ...]",
         help="Glob patterns to transfer from local to remote",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose", "-v",
+        help="Show all subprocess commands before executing",
+    ),
 ):
     """Push filtered files from local project to GPU server"""
-    push_cmd.command(patterns)
+    push_cmd.command(patterns, verbose=verbose)
 
 
 @app.command()
@@ -73,9 +90,14 @@ def pull(
         metavar="PATTERN [PATTERN ...]",
         help="Glob patterns to transfer from remote to local",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose", "-v",
+        help="Show all subprocess commands before executing",
+    ),
 ):
     """Pull filtered files from GPU server to local project"""
-    pull_cmd.command(patterns)
+    pull_cmd.command(patterns, verbose=verbose)
 
 
 @app.command()
@@ -91,9 +113,14 @@ def build(
         "-f",
         help="Compose file path",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose", "-v",
+        help="Show all subprocess commands before executing",
+    ),
 ):
     """Build compose images on GPU server"""
-    build_cmd.command(service=service, compose_file=compose_file)
+    build_cmd.command(service=service, compose_file=compose_file, verbose=verbose)
 
 
 @app.command(
@@ -145,6 +172,11 @@ def run(
         "--name", "-n",
         help="Assign a container name",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose", "-v",
+        help="Show all subprocess commands before executing",
+    ),
 ):
     """Run a command in a compose service, or start service if no command given"""
     command_parts = [*(cmd or []), *ctx.args]
@@ -157,6 +189,7 @@ def run(
         no_rm=no_rm,
         detach=detach,
         name=name,
+        verbose=verbose,
     )
 
 

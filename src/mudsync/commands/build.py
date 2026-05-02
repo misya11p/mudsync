@@ -30,6 +30,7 @@ def build_remote_build_command(
 def command(
     service: str | None = None,
     compose_file: str | None = None,
+    verbose: bool = False,
 ):
     project_root = require_project()
     project_config = require_project_config(project_root)
@@ -48,6 +49,10 @@ def command(
     target = service or "(all services)"
     typer.echo(f"Building on {ssh_info.hostname}: {target}")
     typer.echo()
+
+    if verbose:
+        typer.echo(f"$ {shlex.join(ssh_cmd)}")
+        typer.echo()
 
     try:
         result = subprocess.run(ssh_cmd, check=False)

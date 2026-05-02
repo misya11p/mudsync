@@ -34,7 +34,9 @@ def build_rsync_command(
     return rsync_cmd
 
 
-def run_rsync(rsync_cmd: list[str]) -> None:
+def run_rsync(rsync_cmd: list[str], verbose: bool = False) -> None:
+    if verbose:
+        typer.echo(f"$ {shlex.join(rsync_cmd)}")
     try:
         subprocess.run(rsync_cmd, check=True)
     except subprocess.CalledProcessError as e:
@@ -47,8 +49,10 @@ def run_rsync(rsync_cmd: list[str]) -> None:
         ) from exc
 
 
-def run_ssh_command(ssh_info: SSHHost, remote_command: str) -> None:
+def run_ssh_command(ssh_info: SSHHost, remote_command: str, verbose: bool = False) -> None:
     ssh_cmd = build_ssh_command(ssh_info, remote_command)
+    if verbose:
+        typer.echo(f"$ {shlex.join(ssh_cmd)}")
     try:
         subprocess.run(ssh_cmd, check=True)
     except subprocess.CalledProcessError as e:
@@ -59,7 +63,7 @@ def run_ssh_command(ssh_info: SSHHost, remote_command: str) -> None:
         raise SystemExit("Error: ssh command not found") from exc
 
 
-def command():
+def command(verbose: bool = False):
     project_root = require_project()
     project_config = require_project_config(project_root)
     ssh_info = get_host_config(project_config.server)
@@ -88,7 +92,7 @@ def command():
     typer.echo(f"Excludes: {len(exclude_lines)} rules")
 
     try:
-        run_rsync(rsync_cmd)
+        run_rsync(rsync_cmd, verbose=verbose)
     finally:
         import os
 
@@ -98,7 +102,7 @@ def command():
         typer.echo()
         typer.echo(f"Syncing {len(data_includes)} data items to {data_dir}")
 
-        run_ssh_command(ssh_info, f"mkdir -p {shlex.quote(data_dir)}")
+        run_ssh_command(ssh_info, f"mkdir -p {shlex.quote(data_dir)}", verbose=verbose)
 
         data_options = ["--prune-empty-dirs", "--include=*/"]
         data_options.extend(f"--include={pattern}" for pattern in data_includes)
@@ -111,7 +115,7 @@ def command():
             options=data_options,
         )
 
-        run_rsync(data_rsync_cmd)
+        run_rsync(data_rsync_cmd, verbose=verbose)
 
         symlink_parts = []
         for entry in data_includes:
@@ -123,7 +127,7 @@ def command():
 
         if symlink_parts:
             remote_command = " && ".join(symlink_parts)
-            run_ssh_command(ssh_info, remote_command)
+            run_ssh_command(ssh_info, remote_command, verbose=verbose)
             typer.echo(f"Created {len(data_includes)} data symlinks")
 
     typer.echo()

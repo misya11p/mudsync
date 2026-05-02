@@ -1,11 +1,14 @@
+import shlex
 import subprocess
+
+import typer
 
 from mudsync.project import require_project
 from mudsync.ssh_config import get_host_config
 from mudsync.sync_rules import require_project_config
 
 
-def command():
+def command(verbose: bool = False):
     project_root = require_project()
     project_config = require_project_config(project_root)
     ssh_info = get_host_config(project_config.server)
@@ -26,6 +29,10 @@ def command():
 
     remote_cmd = f"mkdir -p {remote_path} && cd {remote_path} && exec $SHELL"
     ssh_cmd.append(remote_cmd)
+
+    if verbose:
+        typer.echo(f"$ {shlex.join(ssh_cmd)}")
+        typer.echo()
 
     try:
         subprocess.run(ssh_cmd, check=True)
