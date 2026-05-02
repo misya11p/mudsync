@@ -13,7 +13,8 @@ from mudsync.commands import run as run_cmd
 
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
 app = typer.Typer(
-    help="MUDSync - GPU server synchronization CLI", context_settings=CONTEXT_SETTINGS
+    help="MUDSync - GPU server synchronization CLI",
+    context_settings=CONTEXT_SETTINGS,
 )
 
 
@@ -81,8 +82,7 @@ def pull(
 def build(
     service: str | None = typer.Option(
         None,
-        "--service",
-        "-s",
+        "--service", "-s",
         help="Compose service name (builds all if omitted)",
     ),
     compose_file: str | None = typer.Option(
