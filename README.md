@@ -2,11 +2,14 @@
 
 武蔵野大学データサイエンス学部向けのGPUサーバー連携CLIツール。ローカル環境とリモート環境のファイル同期や、Dockerコンテナでのコマンド実行をサポートします。
 
+> [!WARNING]
+> 本ツールはサーバー操作を完全に置き換えるものではありません。細かい操作が必要な場合は、従来通りサーバーに直接入る必要があります。特に、サーバーの使用を停止する場合は、必ずサーバーに入り、DockerコンテナとGPUが完全に停止していることを確認してください。
+
 ## 準備
 
 下記コマンドを実行し、本ツールをインストールしてください。
 
-```bash
+```
 # pip
 pip install git+https://github.com/misya11p/mudsync.git
 
@@ -16,7 +19,7 @@ uv tool install git+https://github.com/misya11p/mudsync.git
 
 下記コマンドを実行し、サーバー情報のデフォルト値を設定してください。
 
-```bash
+```
 msync default
 ```
 
@@ -33,7 +36,7 @@ msync default
 
 プロジェクトルートで以下のコマンドを実行し、設定を行います。
 
-```bash
+```
 msync set
 ```
 
@@ -43,7 +46,7 @@ msync set
 
 以下のコマンドを実行し、サーバーと同期するファイルを設定します。
 
-```bash
+```
 msync manage
 ```
 
@@ -51,7 +54,7 @@ msync manage
 
 同期するファイルを設定したら、以下のコマンドで同期を行います。
 
-```bash
+```
 msync sync
 ```
 
@@ -59,7 +62,7 @@ msync sync
 
 以下のコマンドで、GPUサーバー上にDockerイメージをビルドします。
 
-```bash
+```
 msync build
 ```
 
@@ -67,7 +70,7 @@ msync build
 
 ビルドが完了したら、以下のコマンドでコンテナを起動します。
 
-```bash
+```
 msync run
 ```
 
@@ -75,7 +78,7 @@ msync run
 
 また、引数にコマンドを直接指定することもできます。
 
-```bash
+```
 msync run python train.py --epochs 10
 ```
 
