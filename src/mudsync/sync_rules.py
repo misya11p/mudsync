@@ -13,6 +13,7 @@ DEFAULT_GLOBAL_EXCLUDES = [
     ".DS_Store",
     "*.pyc",
     "*.pyo",
+    "msync.json",
 ]
 
 
