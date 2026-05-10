@@ -2,7 +2,7 @@ services:
   app:
     build: .
     working_dir: /app
-    command: python train.py
+    command: python train.py --epochs 3
     volumes:
       - .:/app
     deploy:

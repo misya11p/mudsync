@@ -1,4 +1,5 @@
 import shutil
+import argparse
 
 import torch
 import torch.nn as nn
@@ -7,6 +8,12 @@ from torchvision import datasets
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from tqdm import tqdm
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--epochs", type=int, default=1, help="number of epochs to train")
+args = parser.parse_args()
+n_epochs = args.epochs
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 if device.type == "cuda":
@@ -51,7 +58,7 @@ model = CNN().to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-for epoch in range(1):
+for epoch in range(n_epochs):
     model.train()
     total_loss = 0
     for x, y in tqdm(train_loader, desc=f"Epoch {epoch+1}"):
