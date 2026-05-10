@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    working_dir: /app
+    command: python train.py --epochs 3
+    volumes:
+      - .:/app
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
