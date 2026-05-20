@@ -90,8 +90,72 @@ class FileBrowser:
         self.size_loading: set[Path] = set()
         self.size_lock = threading.Lock()
         self._app_ref = app_ref
+
+        # Caches
+        self._children: dict[Path, list[Path]] = {}
+        self._is_dir_cache: dict[Path, bool] = {}
+        self._state_cache: dict[Path, str] = {}
+        self._state_cache_version: dict[Path, int] = {}
+        self._global_state_version = 0
+        self._rel_cache: dict[Path, str] = {}
+        self._parts_cache: dict[Path, tuple[str, ...]] = {}
+        self._excludes_set: set[str] = set()
+        self._dir_excludes_set: set[str] = set()
+        self._data_includes_set: set[str] = set()
+        self._dir_data_includes_set: set[str] = set()
+        self._sync_sets()
+
         self.refresh_items()
         self._start_size_calculations()
+
+    def _get_cached_state(self, path: Path) -> str | None:
+        if self._state_cache_version.get(path, 0) == self._global_state_version and path in self._state_cache:
+            return self._state_cache[path]
+        return None
+
+    def _set_cached_state(self, path: Path, value: str):
+        self._state_cache[path] = value
+        self._state_cache_version[path] = self._global_state_version
+
+    def _sync_sets(self):
+        self._excludes_set = set(self.project_config.excludes)
+        self._dir_excludes_set = {e for e in self._excludes_set if e.endswith("/")}
+        self._data_includes_set = set(self.project_config.data_includes)
+        self._dir_data_includes_set = {e for e in self._data_includes_set if e.endswith("/")}
+
+    def _rel_str_cached(self, path: Path) -> str:
+        if path not in self._rel_cache:
+            self._rel_cache[path] = _rel_str(path, self.project_root)
+        return self._rel_cache[path]
+
+    def _parts_cached(self, path: Path) -> tuple[str, ...]:
+        if path not in self._parts_cache:
+            self._parts_cache[path] = Path(self._rel_str_cached(path)).parts
+        return self._parts_cache[path]
+
+    def _is_dir_cached(self, path: Path) -> bool:
+        if path not in self._is_dir_cache:
+            self._is_dir_cache[path] = path.is_dir()
+        return self._is_dir_cache[path]
+
+    def _scan_dir(self, path: Path):
+        if path in self._children:
+            return
+        try:
+            entries = []
+            for p in path.iterdir():
+                if self._is_global_excluded(p):
+                    continue
+                entries.append(p)
+                if p not in self._is_dir_cache:
+                    self._is_dir_cache[p] = p.is_dir()
+            entries.sort(key=lambda p: (not self._is_dir_cache.get(p, False), p.name.lower()))
+        except PermissionError:
+            entries = []
+        self._children[path] = entries
+
+    def _invalidate_state_cache(self, path: Path):
+        self._global_state_version += 1
 
     def _is_global_excluded(self, path: Path) -> bool:
         name = path.name
@@ -105,17 +169,8 @@ class FileBrowser:
         return False
 
     def refresh_items(self):
-        try:
-            self.items = sorted(
-                [
-                    p
-                    for p in self.current_dir.iterdir()
-                    if not self._is_global_excluded(p)
-                ],
-                key=lambda p: (not p.is_dir(), p.name.lower()),
-            )
-        except PermissionError:
-            self.items = []
+        self._scan_dir(self.current_dir)
+        self.items = list(self._children.get(self.current_dir, []))
         if self.current_dir in self.cursor_positions:
             self.cursor_index = min(
                 self.cursor_positions[self.current_dir], max(0, len(self.items) - 1)
@@ -125,7 +180,7 @@ class FileBrowser:
 
         for item in self.items:
             if item not in self.item_sizes:
-                if item.is_file():
+                if not self._is_dir_cached(item):
                     self.item_sizes[item] = get_file_size(item)
                 else:
                     self.item_sizes[item] = 0
@@ -135,7 +190,7 @@ class FileBrowser:
 
     def _start_size_calculations(self):
         for item in self.items:
-            if item.is_dir():
+            if self._is_dir_cached(item):
                 if item not in self.dir_sizes and item not in self.size_loading:
                     self._calc_dir_size_async(item)
 
@@ -161,21 +216,24 @@ class FileBrowser:
     def is_data_included(self, path: Path) -> bool:
         if self._is_global_excluded(path):
             return False
-        rs = _rel_str(path, self.project_root)
-        if rs in self.project_config.data_includes:
+        rs = self._rel_str_cached(path)
+        if rs in self._data_includes_set:
             return True
-        for di in self.project_config.data_includes:
-            if di.endswith("/") and rs.startswith(di):
+        parts = self._parts_cached(path)
+        for i in range(len(parts) - 1, 0, -1):
+            parent = "/".join(parts[:i]) + "/"
+            if parent in self._dir_data_includes_set:
                 return True
         return False
 
     def _find_parent_data_inclusion(self, path: Path) -> str | None:
         if self._is_global_excluded(path):
             return None
-        rs = _rel_str(path, self.project_root)
-        for di in self.project_config.data_includes:
-            if di.endswith("/") and rs.startswith(di):
-                return di
+        parts = self._parts_cached(path)
+        for i in range(len(parts) - 1, 0, -1):
+            parent = "/".join(parts[:i]) + "/"
+            if parent in self._dir_data_includes_set:
+                return parent
         return None
 
     def is_excluded(self, path: Path) -> bool:
@@ -183,96 +241,142 @@ class FileBrowser:
             return False
         if self._is_global_excluded(path):
             return True
-        rs = _rel_str(path, self.project_root)
-        if rs in self.project_config.excludes:
+        rs = self._rel_str_cached(path)
+        if rs in self._excludes_set:
             return True
-        for exc in self.project_config.excludes:
-            if exc.endswith("/") and rs.startswith(exc):
+        parts = self._parts_cached(path)
+        for i in range(len(parts) - 1, 0, -1):
+            parent = "/".join(parts[:i]) + "/"
+            if parent in self._dir_excludes_set:
                 return True
         return False
 
     def _find_parent_exclusion(self, path: Path) -> str | None:
         if self._is_global_excluded(path):
             return "__global__"
-        rs = _rel_str(path, self.project_root)
-        for exc in self.project_config.excludes:
-            if exc.endswith("/") and rs.startswith(exc):
-                return exc
+        parts = self._parts_cached(path)
+        for i in range(len(parts) - 1, 0, -1):
+            parent = "/".join(parts[:i]) + "/"
+            if parent in self._dir_excludes_set:
+                return parent
         return None
 
-    def get_item_state(self, path: Path) -> str:
-        if self.is_data_included(path):
+    def _calc_item_state(self, path: Path) -> str:
+        rs = self._rel_str_cached(path)
+        parts = self._parts_cached(path)
+        # data check
+        if rs in self._data_includes_set:
             return "data"
-        if self.is_excluded(path):
+        for i in range(len(parts) - 1, 0, -1):
+            parent = "/".join(parts[:i]) + "/"
+            if parent in self._dir_data_includes_set:
+                return "data"
+        # global exclude check (already done by caller for non-global items)
+        if self._is_global_excluded(path):
             return "exclude"
+        # exclude check
+        if rs in self._excludes_set:
+            return "exclude"
+        for i in range(len(parts) - 1, 0, -1):
+            parent = "/".join(parts[:i]) + "/"
+            if parent in self._dir_excludes_set:
+                return "exclude"
         return "include"
 
-    def get_dir_state(self, path: Path) -> str:
-        if self.is_data_included(path):
-            return "data"
-        if self.is_excluded(path):
-            return "exclude"
-        try:
-            children = [p for p in path.iterdir() if not self._is_global_excluded(p)]
-        except (OSError, PermissionError):
-            return "include"
-        if not children:
-            return "include"
-        child_states = set()
-        for c in children:
-            if c.is_dir():
-                child_states.add(self.get_dir_state(c))
+    def get_item_state(self, path: Path) -> str:
+        cached = self._get_cached_state(path)
+        if cached is not None:
+            return cached
+        result = self._calc_item_state(path)
+        self._set_cached_state(path, result)
+        return result
+
+    def _compute_dir_state_bottom_up(self, root: Path) -> str:
+        order = []
+        stack = [(root, False)]
+        while stack:
+            path, visited = stack.pop()
+            if visited:
+                order.append(path)
+                continue
+            stack.append((path, True))
+            for child in reversed(self._children.get(path, [])):
+                if self._is_dir_cache.get(child, False):
+                    stack.append((child, False))
+                else:
+                    order.append(child)
+
+        for path in order:
+            if not self._is_dir_cache.get(path, False):
+                result = self._calc_item_state(path)
             else:
-                child_states.add(self.get_item_state(c))
-        if child_states == {"exclude"}:
-            return "exclude"
-        if child_states == {"data"}:
-            return "data"
-        all_included_or_data = all(s in ("include", "data") for s in child_states)
-        if all_included_or_data and "data" not in child_states:
-            return "include"
-        if all_included_or_data and "data" in child_states:
-            return "half_data"
-        return "half_include"
+                if self.is_data_included(path):
+                    result = "data"
+                elif self.is_excluded(path):
+                    result = "exclude"
+                else:
+                    children = self._children.get(path, [])
+                    if not children:
+                        result = "include"
+                    else:
+                        child_states = set()
+                        for c in children:
+                            child_states.add(self._state_cache[c])
+                        if child_states == {"exclude"}:
+                            result = "exclude"
+                        elif child_states == {"data"}:
+                            result = "data"
+                        elif all(s in ("include", "data") for s in child_states):
+                            if "data" not in child_states:
+                                result = "include"
+                            else:
+                                result = "half_data"
+                        else:
+                            result = "half_include"
+            self._set_cached_state(path, result)
+
+        return self._state_cache[root]
+
+    def get_dir_state(self, path: Path) -> str:
+        cached = self._get_cached_state(path)
+        if cached is not None:
+            return cached
+        self._scan_dir(path)
+        return self._compute_dir_state_bottom_up(path)
 
     def toggle_exclude(self, path: Path):
         if self._is_global_excluded(path):
             return
         if self.is_data_included(path):
             self._remove_data_inclusion(path)
-        if path.is_dir():
-            rs = _rel_str(path, self.project_root)
+        rs = self._rel_str_cached(path)
+        prefix = rs if rs.endswith("/") else rs + "/"
+        if self._is_dir_cached(path):
             state = self.get_dir_state(path)
             parent_exc = self._find_parent_exclusion(path)
             if state == "exclude":
                 if rs in self.project_config.excludes:
                     self.project_config.excludes.remove(rs)
-                    for child in path.rglob("*"):
-                        if self._is_global_excluded(child):
-                            continue
-                        crs = _rel_str(child, self.project_root)
-                        if crs in self.project_config.excludes:
-                            self.project_config.excludes.remove(crs)
+                    to_remove = [e for e in self.project_config.excludes if e.startswith(prefix)]
+                    for e in to_remove:
+                        self.project_config.excludes.remove(e)
                 elif parent_exc and parent_exc != "__global__":
                     self.project_config.excludes.remove(parent_exc)
                     parent_dir = self.project_root / parent_exc.rstrip("/")
-                    for sibling in parent_dir.iterdir():
+                    self._scan_dir(parent_dir)
+                    for sibling in self._children.get(parent_dir, []):
                         if self._is_global_excluded(sibling) or sibling == path:
                             continue
-                        crs = _rel_str(sibling, self.project_root)
+                        crs = self._rel_str_cached(sibling)
                         if crs not in self.project_config.excludes:
                             self.project_config.excludes.append(crs)
             elif state == "half_include":
-                for child in path.rglob("*"):
-                    if self._is_global_excluded(child):
-                        continue
-                    crs = _rel_str(child, self.project_root)
-                    if crs in self.project_config.excludes:
-                        self.project_config.excludes.remove(crs)
+                to_remove = [e for e in self.project_config.excludes if e.startswith(prefix)]
+                for e in to_remove:
+                    self.project_config.excludes.remove(e)
             else:
                 self.project_config.excludes.append(rs)
         else:
-            rs = _rel_str(path, self.project_root)
             if rs in self.project_config.excludes:
                 self.project_config.excludes.remove(rs)
             elif parent_exc := self._find_parent_exclusion(path):
@@ -280,17 +384,22 @@ class FileBrowser:
                     return
                 self.project_config.excludes.remove(parent_exc)
                 parent_dir = self.project_root / parent_exc.rstrip("/")
-                for sibling in parent_dir.iterdir():
+                self._scan_dir(parent_dir)
+                for sibling in self._children.get(parent_dir, []):
                     if self._is_global_excluded(sibling) or sibling == path:
                         continue
-                    crs = _rel_str(sibling, self.project_root)
+                    crs = self._rel_str_cached(sibling)
                     if crs not in self.project_config.excludes:
                         self.project_config.excludes.append(crs)
             else:
                 self.project_config.excludes.append(rs)
 
+        self._sync_sets()
+        self._invalidate_state_cache(path)
+
     def _remove_data_inclusion(self, path: Path):
-        rs = _rel_str(path, self.project_root)
+        rs = self._rel_str_cached(path)
+        prefix = rs if rs.endswith("/") else rs + "/"
         if rs in self.project_config.data_includes:
             self.project_config.data_includes.remove(rs)
         else:
@@ -298,24 +407,26 @@ class FileBrowser:
             if parent_di:
                 self.project_config.data_includes.remove(parent_di)
                 parent_dir = self.project_root / parent_di.rstrip("/")
-                for sibling in parent_dir.iterdir():
+                self._scan_dir(parent_dir)
+                for sibling in self._children.get(parent_dir, []):
                     if self._is_global_excluded(sibling) or sibling == path:
                         continue
-                    srs = _rel_str(sibling, self.project_root)
+                    srs = self._rel_str_cached(sibling)
                     if srs not in self.project_config.data_includes:
                         self.project_config.data_includes.append(srs)
-        if path.is_dir():
-            for child in path.rglob("*"):
-                if self._is_global_excluded(child):
-                    continue
-                crs = _rel_str(child, self.project_root)
-                if crs in self.project_config.data_includes:
-                    self.project_config.data_includes.remove(crs)
+        if self._is_dir_cached(path):
+            to_remove = [e for e in self.project_config.data_includes if e.startswith(prefix)]
+            for e in to_remove:
+                self.project_config.data_includes.remove(e)
+
+        self._sync_sets()
+        self._invalidate_state_cache(path)
 
     def toggle_data(self, path: Path):
         if self._is_global_excluded(path):
             return
-        rs = _rel_str(path, self.project_root)
+        rs = self._rel_str_cached(path)
+        prefix = rs if rs.endswith("/") else rs + "/"
         if self.is_data_included(path):
             self._remove_data_inclusion(path)
         else:
@@ -327,27 +438,25 @@ class FileBrowser:
                     if parent_exc and parent_exc != "__global__":
                         self.project_config.excludes.remove(parent_exc)
                         parent_dir = self.project_root / parent_exc.rstrip("/")
-                        for sibling in parent_dir.iterdir():
+                        self._scan_dir(parent_dir)
+                        for sibling in self._children.get(parent_dir, []):
                             if self._is_global_excluded(sibling) or sibling == path:
                                 continue
-                            srs = _rel_str(sibling, self.project_root)
+                            srs = self._rel_str_cached(sibling)
                             if srs not in self.project_config.excludes:
                                 self.project_config.excludes.append(srs)
-                if path.is_dir():
-                    for child in path.rglob("*"):
-                        if self._is_global_excluded(child):
-                            continue
-                        crs = _rel_str(child, self.project_root)
-                        if crs in self.project_config.excludes:
-                            self.project_config.excludes.remove(crs)
+                if self._is_dir_cached(path):
+                    to_remove = [e for e in self.project_config.excludes if e.startswith(prefix)]
+                    for e in to_remove:
+                        self.project_config.excludes.remove(e)
             self.project_config.data_includes.append(rs)
-            if path.is_dir():
-                for child in path.rglob("*"):
-                    if self._is_global_excluded(child):
-                        continue
-                    crs = _rel_str(child, self.project_root)
-                    if crs in self.project_config.data_includes:
-                        self.project_config.data_includes.remove(crs)
+            if self._is_dir_cached(path):
+                to_remove = [e for e in self.project_config.data_includes if e.startswith(prefix)]
+                for e in to_remove:
+                    self.project_config.data_includes.remove(e)
+
+        self._sync_sets()
+        self._invalidate_state_cache(path)
 
     def get_display_text(self):
         lines = []
@@ -361,7 +470,7 @@ class FileBrowser:
         )
 
         for i, item in enumerate(self.items):
-            is_dir = item.is_dir()
+            is_dir = self._is_dir_cached(item)
             name = item.name + ("/" if is_dir else "")
 
             if is_dir:
@@ -417,7 +526,7 @@ class FileBrowser:
 
     def enter_dir(self):
         self._save_cursor_position()
-        if self.items and self.items[self.cursor_index].is_dir():
+        if self.items and self._is_dir_cached(self.items[self.cursor_index]):
             self.current_dir = self.items[self.cursor_index]
             self.cursor_index = 0
             self.refresh_items()
