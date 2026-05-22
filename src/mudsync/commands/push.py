@@ -8,7 +8,10 @@ from mudsync.sync_rules import require_project_config
 
 def build_filtered_transfer_options(patterns: list[str]) -> list[str]:
     options = ["--prune-empty-dirs", "--include=*/"]
-    options.extend(f"--include={pattern}" for pattern in patterns)
+    for pattern in patterns:
+        options.append(f"--include={pattern}")
+        base = pattern.rstrip("/")
+        options.append(f"--include={base}/**")
     options.append("--exclude=*")
     return options
 

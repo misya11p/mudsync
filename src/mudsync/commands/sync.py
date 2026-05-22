@@ -105,7 +105,10 @@ def command(verbose: bool = False):
         run_ssh_command(ssh_info, f"mkdir -p {shlex.quote(data_dir)}", verbose=verbose)
 
         data_options = ["--prune-empty-dirs", "--include=*/"]
-        data_options.extend(f"--include={pattern}" for pattern in data_includes)
+        for pattern in data_includes:
+            data_options.append(f"--include={pattern}")
+            base = pattern.rstrip("/")
+            data_options.append(f"--include={base}/**")
         data_options.append("--exclude=*")
 
         data_rsync_cmd = build_rsync_command(
