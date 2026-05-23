@@ -1,4 +1,5 @@
 import fnmatch
+import shutil
 import threading
 from pathlib import Path
 
@@ -83,6 +84,7 @@ class FileBrowser:
         self.project_config = project_config
         self.current_dir = project_root
         self.cursor_index = 0
+        self.scroll_offset = 0
         self.cursor_positions: dict[Path, int] = {}
         self.items: list[Path] = []
         self.item_sizes: dict[Path, int] = {}
@@ -458,18 +460,44 @@ class FileBrowser:
         self._sync_sets()
         self._invalidate_state_cache(path)
 
+    HEADER_LINES = 3
+
+    def _visible_height(self) -> int:
+        rows = shutil.get_terminal_size().lines
+        return max(1, rows - self.HEADER_LINES)
+
+    def _clamp_scroll(self):
+        total = len(self.items)
+        if total == 0:
+            self.scroll_offset = 0
+            return
+        height = self._visible_height()
+        max_offset = max(0, total - height)
+        self.scroll_offset = max(0, min(self.scroll_offset, max_offset))
+        if self.cursor_index < self.scroll_offset:
+            self.scroll_offset = self.cursor_index
+        elif self.cursor_index >= self.scroll_offset + height:
+            self.scroll_offset = self.cursor_index - height + 1
+
     def get_display_text(self):
+        self._clamp_scroll()
+        total = len(self.items)
+        height = self._visible_height()
+        start = self.scroll_offset
+        end = min(start + height, total)
+
         lines = []
         rel_current = self.current_dir.relative_to(self.project_root)
         lines.append(("class:header", f"  {rel_current or '.'}\n"))
         lines.append(
             (
                 "class:info",
-                "up/down or j/k: move  right/l: enter dir  left/h: parent  space: toggle sync  d: toggle data  enter: save  esc/q/ctrl+c: cancel\n\n",
+                "up/down/j/k: move  pgup/pgdn: scroll  right/l: enter dir  left/h: parent  space: toggle sync  d: toggle data  enter: save  esc/q: cancel\n\n",
             )
         )
 
-        for i, item in enumerate(self.items):
+        for i in range(start, end):
+            item = self.items[i]
             is_dir = self._is_dir_cached(item)
             name = item.name + ("/" if is_dir else "")
 
@@ -514,6 +542,11 @@ class FileBrowser:
                 (style_class, f"{cursor_marker}{display_name:<30s} {size_str}\n")
             )
 
+        if total > height:
+            pct_top = (start + 1) / total * 100
+            pct_bot = end / total * 100
+            lines.append(("class:info", f"[{pct_top:.0f}%-{pct_bot:.0f}%] {start+1}-{end}/{total}\n"))
+
         return lines
 
     def move_up(self):
@@ -524,11 +557,20 @@ class FileBrowser:
         if self.cursor_index < len(self.items) - 1:
             self.cursor_index += 1
 
+    def page_up(self):
+        height = self._visible_height()
+        self.cursor_index = max(0, self.cursor_index - height)
+
+    def page_down(self):
+        height = self._visible_height()
+        self.cursor_index = min(len(self.items) - 1, self.cursor_index + height)
+
     def enter_dir(self):
         self._save_cursor_position()
         if self.items and self._is_dir_cached(self.items[self.cursor_index]):
             self.current_dir = self.items[self.cursor_index]
             self.cursor_index = 0
+            self.scroll_offset = 0
             self.refresh_items()
             self._start_size_calculations()
 
@@ -536,6 +578,7 @@ class FileBrowser:
         self._save_cursor_position()
         if self.current_dir != self.project_root:
             self.current_dir = self.current_dir.parent
+            self.scroll_offset = 0
             self.refresh_items()
             self._start_size_calculations()
 
@@ -678,6 +721,14 @@ def command():
     @kb.add("q")
     def _(event):
         event.app.exit(result="cancelled")
+
+    @kb.add("pagedown")
+    def _(event):
+        browser.page_down()
+
+    @kb.add("pageup")
+    def _(event):
+        browser.page_up()
 
     style = Style.from_dict(
         {
