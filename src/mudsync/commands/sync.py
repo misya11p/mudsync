@@ -63,7 +63,7 @@ def run_ssh_command(ssh_info: SSHHost, remote_command: str, verbose: bool = Fals
         raise SystemExit("Error: ssh command not found") from exc
 
 
-def command(verbose: bool = False):
+def command(delete: bool = False, verbose: bool = False):
     project_root = require_project()
     project_config = require_project_config(project_root)
     ssh_info = get_host_config(project_config.server)
@@ -79,11 +79,15 @@ def command(verbose: bool = False):
         f.write("\n".join(exclude_lines) + "\n")
         exclude_file = f.name
 
+    rsync_options = ["--exclude-from", exclude_file]
+    if delete:
+        rsync_options.insert(0, "--delete")
+
     rsync_cmd = build_rsync_command(
         source=f"{project_root}/",
         destination=f"{ssh_info.user}@{ssh_info.hostname}:{remote_path}/",
         ssh_info=ssh_info,
-        options=["--delete", "--exclude-from", exclude_file],
+        options=rsync_options,
     )
 
     typer.echo(

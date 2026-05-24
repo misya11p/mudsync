@@ -56,6 +56,11 @@ def manage():
 
 @app.command()
 def sync(
+    delete: bool = typer.Option(
+        False,
+        "--delete",
+        help="Delete extraneous files from destination (rsync --delete)",
+    ),
     verbose: bool = typer.Option(
         False,
         "--verbose", "-v",
@@ -63,7 +68,7 @@ def sync(
     ),
 ):
     """Sync local project to GPU server via rsync"""
-    sync_cmd.command(verbose=verbose)
+    sync_cmd.command(delete=delete, verbose=verbose)
 
 
 @app.command()
