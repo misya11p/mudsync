@@ -15,6 +15,7 @@ CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
 app = typer.Typer(
     help="MUDSync - GPU server synchronization CLI",
     context_settings=CONTEXT_SETTINGS,
+    add_completion=False,
 )
 
 
