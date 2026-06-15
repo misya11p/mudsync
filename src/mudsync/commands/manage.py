@@ -6,9 +6,10 @@ from pathlib import Path
 from prompt_toolkit import Application
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import Layout
-from prompt_toolkit.layout.containers import Window
+from prompt_toolkit.layout.containers import HSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
+from prompt_toolkit.utils import get_cwidth
 import typer
 
 from mudsync.project import require_project
@@ -33,6 +34,16 @@ def format_size(size_bytes: int) -> tuple[str, str]:
 
 
 SIZE_WIDTH = 8
+NAVIGATION_MESSAGE = (
+    "up/down/j/k: move  pgup/pgdn: scroll  right/l: enter dir  "
+    "left/h: parent  space: toggle sync  d: toggle data  "
+    "enter: save  esc/q: cancel"
+)
+
+
+def _wrapped_line_count(text: str, width: int) -> int:
+    width = max(1, width)
+    return max(1, (get_cwidth(text) + width - 1) // width)
 
 
 def format_size_padded(size_bytes: int) -> str:
@@ -460,11 +471,22 @@ class FileBrowser:
         self._sync_sets()
         self._invalidate_state_cache(path)
 
-    HEADER_LINES = 3
+    def get_header_text(self):
+        rel_current = self.current_dir.relative_to(self.project_root)
+        return [("class:header", f"  {rel_current or '.'}")]
+
+    def _header_height(self) -> int:
+        columns = shutil.get_terminal_size().columns
+        rel_current = self.current_dir.relative_to(self.project_root)
+        return _wrapped_line_count(f"  {rel_current or '.'}", columns)
+
+    def _navigation_height(self) -> int:
+        columns = shutil.get_terminal_size().columns
+        return _wrapped_line_count(NAVIGATION_MESSAGE, columns) + 1
 
     def _visible_height(self) -> int:
         rows = shutil.get_terminal_size().lines
-        return max(1, rows - self.HEADER_LINES)
+        return max(1, rows - self._header_height() - self._navigation_height())
 
     def _clamp_scroll(self):
         total = len(self.items)
@@ -487,14 +509,6 @@ class FileBrowser:
         end = min(start + height, total)
 
         lines = []
-        rel_current = self.current_dir.relative_to(self.project_root)
-        lines.append(("class:header", f"  {rel_current or '.'}\n"))
-        lines.append(
-            (
-                "class:info",
-                "up/down/j/k: move  pgup/pgdn: scroll  right/l: enter dir  left/h: parent  space: toggle sync  d: toggle data  enter: save  esc/q: cancel\n\n",
-            )
-        )
 
         for i in range(start, end):
             item = self.items[i]
@@ -743,7 +757,25 @@ def command():
     browser = FileBrowser(project_root, project_config, app_ref)
 
     control = FormattedTextControl(get_display)
-    layout = Layout(Window(content=control))
+    layout = Layout(
+        HSplit(
+            [
+                Window(
+                    content=FormattedTextControl(browser.get_header_text),
+                    height=browser._header_height,
+                    wrap_lines=True,
+                ),
+                Window(
+                    content=FormattedTextControl(
+                        [("class:info", NAVIGATION_MESSAGE)]
+                    ),
+                    height=browser._navigation_height,
+                    wrap_lines=True,
+                ),
+                Window(content=control),
+            ]
+        )
+    )
     app = Application(layout=layout, key_bindings=kb, style=style, full_screen=True)
     app_ref[0] = app
 
